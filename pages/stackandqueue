@@ -1,7 +1,7 @@
 import streamlit as st
 import plotly.graph_objects as go
 
-# 페이지 설정
+# 페이지 설정이요
 st.set_page_config(page_title="자료구조 시각화", page_icon="📊")
 
 st.title("📚 자료구조 시각화: 스택과 큐")
