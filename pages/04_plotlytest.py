@@ -13,60 +13,70 @@ st.title("📊 지역별 인구 피라미드 시각화")
 # 지역 선택
 region = st.selectbox("지역을 선택하세요", df_sum["행정구역"].unique())
 
-# 연령 범위 선택 슬라이더
+# 연령 슬라이더
 age_range = st.slider("연령대 범위 선택", 0, 100, (0, 100))
 
-# 선택한 지역 데이터 필터링
+# 해당 지역 필터링
 df_selected = df_gender[df_gender["행정구역"] == region]
 
-# 남/여 연령별 컬럼 추출
+# 연령별 컬럼 필터링
 age_columns_male = [col for col in df_selected.columns if "남_" in col and "세" in col]
 age_columns_female = [col for col in df_selected.columns if "여_" in col and "세" in col]
 
-# 연령 필터링 함수
+# 연령 필터 함수
 def filter_ages(cols, age_range):
-    filtered = []
+    result = []
     for col in cols:
         age = col.split("_")[-1].replace("세", "").replace("이상", "")
         if age.isdigit():
             age = int(age)
             if age_range[0] <= age <= age_range[1]:
-                filtered.append(col)
-    return filtered
+                result.append(col)
+    return result
 
-# 연령 필터 적용
 filtered_male_cols = filter_ages(age_columns_male, age_range)
 filtered_female_cols = filter_ages(age_columns_female, age_range)
 
-# 문자열 숫자 처리 함수
+# 문자열 숫자 안전 변환
 def parse_number(val):
     try:
         return int(str(val).replace(",", ""))
     except:
         return 0
 
-# 데이터 전처리
-male_counts = df_selected[filtered_male_cols].iloc[0].apply(parse_number) * -1
-female_counts = df_selected[filtered_female_cols].iloc[0].apply(parse_number)
-age_labels = [col.split("_")[-1] for col in filtered_male_cols]
+# 남성/여성 인구수 가져오기
+male_series = df_selected[filtered_male_cols].iloc[0].apply(parse_number)
+female_series = df_selected[filtered_female_cols].iloc[0].apply(parse_number)
 
-# 리스트 길이 정렬 (불일치 방지)
-min_len = min(len(age_labels), len(male_counts), len(female_counts))
-age_labels = age_labels[:min_len]
-male_counts = male_counts[:min_len]
-female_counts = female_counts[:min_len]
+# 연령 라벨 추출
+male_ages = [col.split("_")[-1] for col in filtered_male_cols]
+female_ages = [col.split("_")[-1] for col in filtered_female_cols]
 
-# 시각화용 데이터프레임 생성
+# 최소 길이에 맞춰 자르기
+min_len = min(len(male_ages), len(female_ages), len(male_series), len(female_series))
+male_ages = male_ages[:min_len]
+female_ages = female_ages[:min_len]
+male_series = male_series[:min_len]
+female_series = female_series[:min_len]
+
+# 나이 라벨 통일 (남성 기준)
+age_labels = male_ages
+
+# 남성 인구 음수로 변환 (좌측 피라미드)
+male_counts = male_series * -1
+female_counts = female_series
+
+# 데이터프레임 구성
 df_plot = pd.DataFrame({
     "연령": age_labels,
     "남성": male_counts,
     "여성": female_counts
 })
 
-# Long-form 변환
+# Melt 형식으로 변환
 df_melted = df_plot.melt(id_vars="연령", var_name="성별", value_name="인구수")
 
-# Plotly 시각화
+# Plotly 바 차트
 fig = px.bar(
     df_melted,
     x="인구수",
@@ -77,5 +87,5 @@ fig = px.bar(
     height=700
 )
 
-# 차트 출력
+# 차트 표시
 st.plotly_chart(fig, use_container_width=True)
