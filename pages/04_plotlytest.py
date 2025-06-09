@@ -44,48 +44,47 @@ def parse_number(val):
     except:
         return 0
 
-# 남성/여성 인구수 가져오기
-male_series = df_selected[filtered_male_cols].iloc[0].apply(parse_number)
-female_series = df_selected[filtered_female_cols].iloc[0].apply(parse_number)
+# 데이터가 없을 경우 예외 처리
+if len(filtered_male_cols) == 0 or len(filtered_female_cols) == 0:
+    st.warning("해당 연령 구간에 데이터가 없습니다. 다른 연령대를 선택해주세요.")
+else:
+    # 인구 수 시리즈 생성
+    male_series = df_selected[filtered_male_cols].iloc[0].apply(parse_number)
+    female_series = df_selected[filtered_female_cols].iloc[0].apply(parse_number)
 
-# 연령 라벨 추출
-male_ages = [col.split("_")[-1] for col in filtered_male_cols]
-female_ages = [col.split("_")[-1] for col in filtered_female_cols]
+    # 연령 라벨
+    male_ages = [col.split("_")[-1] for col in filtered_male_cols]
+    female_ages = [col.split("_")[-1] for col in filtered_female_cols]
 
-# 최소 길이에 맞춰 자르기
-min_len = min(len(male_ages), len(female_ages), len(male_series), len(female_series))
-male_ages = male_ages[:min_len]
-female_ages = female_ages[:min_len]
-male_series = male_series[:min_len]
-female_series = female_series[:min_len]
+    # 최소 길이에 맞추기
+    min_len = min(len(male_ages), len(female_ages), len(male_series), len(female_series))
+    if min_len == 0:
+        st.warning("선택한 연령대에 유효한 인구 데이터가 없습니다.")
+    else:
+        age_labels = male_ages[:min_len]
+        male_counts = male_series[:min_len] * -1
+        female_counts = female_series[:min_len]
 
-# 나이 라벨 통일 (남성 기준)
-age_labels = male_ages
+        # 데이터프레임 구성
+        df_plot = pd.DataFrame({
+            "연령": age_labels,
+            "남성": male_counts,
+            "여성": female_counts
+        })
 
-# 남성 인구 음수로 변환 (좌측 피라미드)
-male_counts = male_series * -1
-female_counts = female_series
+        # Melt 형식으로 변환
+        df_melted = df_plot.melt(id_vars="연령", var_name="성별", value_name="인구수")
 
-# 데이터프레임 구성
-df_plot = pd.DataFrame({
-    "연령": age_labels,
-    "남성": male_counts,
-    "여성": female_counts
-})
+        # Plotly 시각화
+        fig = px.bar(
+            df_melted,
+            x="인구수",
+            y="연령",
+            color="성별",
+            orientation="h",
+            title=f"{region} 인구 피라미드 (연령대: {age_range[0]}세 ~ {age_range[1]}세)",
+            height=700
+        )
 
-# Melt 형식으로 변환
-df_melted = df_plot.melt(id_vars="연령", var_name="성별", value_name="인구수")
-
-# Plotly 바 차트
-fig = px.bar(
-    df_melted,
-    x="인구수",
-    y="연령",
-    color="성별",
-    orientation="h",
-    title=f"{region} 인구 피라미드 (연령대: {age_range[0]}세 ~ {age_range[1]}세)",
-    height=700
-)
-
-# 차트 표시
-st.plotly_chart(fig, use_container_width=True)
+        # 시각화 출력
+        st.plotly_chart(fig, use_container_width=True)
