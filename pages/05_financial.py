@@ -1,43 +1,56 @@
 import streamlit as st
-import pandas as pd
 import yfinance as yf
 import plotly.express as px
-from datetime import datetime, timedelta
+import pandas as pd
+from datetime import datetime, timedelta  # ← 여기가 핵심
 
-# 페이지 설정
-st.set_page_config(page_title="📈 글로벌 주식 트렌드", layout="wide")
-
-st.title("📈 글로벌 시가총액 TOP10 기업 주가 추이")
-st.markdown("💹 **최근 1년 간 주가와 누적 수익률을 시각화합니다.**")
-
-# 시가총액 기준 상위 10개 기업 정보 (2025 기준, yfinance 호환 티커 사용)
-company_info = {
-    'Apple': 'AAPL',
-    'Microsoft': 'MSFT',
-    'Nvidia': 'NVDA',
-    'Amazon': 'AMZN',
-    'Alphabet (Google)': 'GOOGL',
-    'Berkshire Hathaway': 'BRK.B',  # yfinance용 표기법
-    'Meta': 'META',
-    'Eli Lilly': 'LLY',
-    'TSMC': 'TSM',
-    'Visa': 'V'
+# 글로벌 시가총액 Top 10 기업
+TICKERS = {
+    "Apple": "AAPL",
+    "Microsoft": "MSFT",
+    "Alphabet (Google)": "GOOGL",
+    "Amazon": "AMZN",
+    "NVIDIA": "NVDA",
+    "Meta (Facebook)": "META",
+    "Berkshire Hathaway": "BRK-B",
+    "Tesla": "TSLA",
+    "TSMC": "TSM",
+    "Johnson & Johnson": "JNJ"
 }
 
-# 사용자 선택
-selected_companies = st.multiselect(
-    "🔎 비교할 기업을 선택하세요",
-    list(company_info.keys()),
-    default=['Apple', 'Microsoft', 'Nvidia']
-)
+st.set_page_config(page_title="글로벌 주가 시각화", layout="wide")
+st.title("📈 글로벌 시가총액 Top 10 기업 - 최근 1년 주가 및 누적 수익률")
 
-if not selected_companies:
-    st.warning("⚠️ 최소 하나 이상의 회사를 선택해주세요.")
+selected = st.multiselect("기업 선택", list(TICKERS.keys()), default=["Apple", "Microsoft"])
+
+if not selected:
+    st.warning("적어도 하나의 기업을 선택해주세요.")
     st.stop()
 
-# 티커 리스트 추출
-tickers = [company_info[comp] for comp in selected_companies]
-
-# 기간 설정
 end_date = datetime.today()
-start_date = end_date - timedel
+start_date = end_date - timedelta(days=365)  # ← 이 부분 수정 완료
+
+@st.cache_data
+def fetch_prices(tickers, start, end):
+    raw = yf.download(tickers, start=start, end=end)
+    if len(tickers) == 1:
+        df = raw["Adj Close"].to_frame()
+        df.columns = [tickers[0]]
+    else:
+        df = raw["Adj Close"]
+    return df
+
+ticker_list = [TICKERS[name] for name in selected]
+price_df = fetch_prices(ticker_list, start_date, end_date)
+
+st.subheader("📊 주가 (Adjusted Close)")
+fig_price = px.line(price_df, labels={"value": "주가", "index": "날짜", "variable": "기업"})
+fig_price.update_layout(legend_title_text="기업", height=500)
+st.plotly_chart(fig_price, use_container_width=True)
+
+returns_df = (price_df / price_df.iloc[0] - 1) * 100
+
+st.subheader("📈 누적 수익률 (%)")
+fig_return = px.line(returns_df, labels={"value": "누적 수익률 (%)", "index": "날짜", "variable": "기업"})
+fig_return.update_layout(legend_title_text="기업", height=500)
+st.plotly_chart(fig_return, use_container_width=True)
