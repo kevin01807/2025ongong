@@ -12,7 +12,7 @@ def load_data():
         os.path.join(os.path.dirname(__file__), "seoul_shelters.csv"), encoding='cp949'
     )
     warnings = pd.read_csv(
-        os.path.join(os.path.dirname(__file__), "kma_warnings.csv"), encoding='utf-8'
+        os.path.join(os.path.dirname(__file__), "FCT_WRN_20250612234617.csv"), encoding='utf-8'
     )
     return shelters, warnings
 
