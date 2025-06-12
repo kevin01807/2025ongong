@@ -8,7 +8,7 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.tree import DecisionTreeClassifier, _tree
 
 st.set_page_config(page_title="당뇨 환자 위험 관리", layout="wide")
-st.title("🩺 당뇨병 환자 위험도 스트림 처리 & 자료구조 시연")
+st.title("🩺 당뇨 환자 위험 관리")
 
 # 1) CSV 불러오기
 file_path = os.path.join(os.path.dirname(__file__), "diabetes_data_upload.csv")
