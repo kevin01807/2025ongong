@@ -21,7 +21,7 @@ def safe_read_csv(filepath):
 def load_data():
     base_path = os.path.dirname(__file__)
     shelters_path = os.path.join(base_path, "seoul_shelters.csv")
-    warnings_path = os.path.join(base_path, "FCT_WRN_20250612234617.csv")
+    warnings_path = os.path.join(base_path, "kma_warnings_sample.csv")
     shelters = safe_read_csv(shelters_path)
     warnings = safe_read_csv(warnings_path)
     return shelters, warnings
