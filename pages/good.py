@@ -1,22 +1,36 @@
-import os, streamlit as st, pandas as pd, networkx as nx
+import os
+import streamlit as st
+import pandas as pd
+import networkx as nx
 import plotly.express as px
 from collections import deque
 
-st.set_page_config(page_title="재난 대응 시뮬레이션", layout="wide")
+st.set_page_config(page_title="재난 경보 시뮬레이션", layout="wide")
 st.title("🌪️ 재난 시뮬레이션: 서울시 대피소 최적화")
 
-# 데이터 로드
+def safe_read_csv(filepath):
+    encodings = ['utf-8', 'cp949', 'euc-kr']
+    for enc in encodings:
+        try:
+            return pd.read_csv(filepath, encoding=enc)
+        except UnicodeDecodeError:
+            continue
+    raise ValueError(f"파일 인코딩을 자동으로 감지하지 못했습니다: {filepath}")
+
 @st.cache_data
 def load_data():
-    shelters = pd.read_csv(
-        os.path.join(os.path.dirname(__file__), "seoul_shelters.csv"), encoding='cp949'
-    )
-    warnings = pd.read_csv(
-        os.path.join(os.path.dirname(__file__), "FCT_WRN_20250612234617.csv"), encoding='utf-8'
-    )
+    base_path = os.path.dirname(__file__)
+    shelters_path = os.path.join(base_path, "seoul_shelters.csv")
+    warnings_path = os.path.join(base_path, "FCT_WRN_20250612234617.csv")
+    shelters = safe_read_csv(shelters_path)
+    warnings = safe_read_csv(warnings_path)
     return shelters, warnings
 
-shelters, warnings = load_data()
+try:
+    shelters, warnings = load_data()
+except Exception as e:
+    st.error(f"데이터 파일 로드 실패: {e}")
+    st.stop()
 
 # 큐: 최신 3개 특보 (FIFO)
 q = deque(warnings.sort_values("발표시각", ascending=False).head(3)["특보종류"])
@@ -37,6 +51,7 @@ for _, r in shelters.iterrows():
 
 st.subheader("🗺️ 대피소 연결 네트워크")
 pos = nx.spring_layout(G, seed=42)
+# plotly 산점도
 fig_net = px.scatter(
     x=[pos[n][0] for n in G.nodes()],
     y=[pos[n][1] for n in G.nodes()],
