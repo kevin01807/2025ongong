@@ -4,3 +4,4 @@ streamlit-folium
 yfinance
 pandas
 scikit-learn
+networkx
