@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
@@ -6,12 +7,15 @@ from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 
 st.set_page_config(page_title="당뇨병 예측 시스템", layout="wide")
-st.title("🩺 당뇨병 예측 Streamlit 프로그램")
+st.title("🩺 당뇨병 예측 시스템 with 공학적 분석")
 
-# CSV 불러오기
+# ✅ 항상 현재 파일 위치 기준 경로 지정
+file_path = os.path.join(os.path.dirname(__file__), "diabetes_data_upload.csv")
+
+# ✅ 데이터 불러오기 및 전처리
 @st.cache_data
-def load_data():
-    df = pd.read_csv("diabetes_data_upload.csv")
+def load_data(path):
+    df = pd.read_csv(path)
     df["class"] = df["class"].map({"Positive": 1, "Negative": 0})
     binary_cols = df.columns.drop(["Age", "Gender", "class"])
     for col in binary_cols:
@@ -19,28 +23,31 @@ def load_data():
     df["Gender"] = df["Gender"].map({"Male": 1, "Female": 0})
     return df
 
-df = load_data()
+try:
+    df = load_data(file_path)
+except FileNotFoundError:
+    st.error("❌ 'diabetes_data_upload.csv' 파일이 현재 디렉터리에 없습니다. 같은 폴더에 넣어주세요.")
+    st.stop()
 
-# 📊 데이터 탐색 시각화
+# 📊 나이대별 당뇨병 여부 시각화
 st.subheader("📈 나이대별 당뇨병 분포")
 fig = px.histogram(df, x="Age", color="class", barmode="group",
                    color_discrete_map={1: "red", 0: "blue"},
                    labels={"class": "당뇨병 여부"})
 st.plotly_chart(fig, use_container_width=True)
 
-# 🔍 학습용 분류 모델 준비
+# 🧠 머신러닝 모델 훈련
 X = df.drop(columns=["class"])
 y = df["class"]
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
 model = RandomForestClassifier(n_estimators=100, random_state=42)
 model.fit(X_train, y_train)
-pred = model.predict(X_test)
-acc = accuracy_score(y_test, pred)
+acc = accuracy_score(y_test, model.predict(X_test))
 
-st.success(f"🎯 분류 모델 정확도: {acc * 100:.2f}%")
+st.success(f"✅ 모델 정확도: {acc * 100:.2f}%")
 
-# 🧪 사용자 입력 기반 예측
+# 🧪 사용자 예측 입력
 st.subheader("🧪 내 증상으로 당뇨병 예측해보기")
 
 with st.form("predict_form"):
@@ -60,6 +67,6 @@ if submitted:
     prediction = model.predict(input_df)[0]
     prob = model.predict_proba(input_df)[0][prediction]
     if prediction == 1:
-        st.error(f"⚠️ 당뇨병 위험 있음 (예측 확률 {prob*100:.2f}%)")
+        st.error(f"⚠️ 당뇨병 위험 있음 (예측 확률: {prob * 100:.2f}%)")
     else:
-        st.success(f"✅ 당뇨병 위험 낮음 (예측 확률 {prob*100:.2f}%)")
+        st.success(f"✅ 당뇨병 위험 낮음 (예측 확률: {prob * 100:.2f}%)")
