@@ -1,84 +1,102 @@
-import pandas as pd
 import streamlit as st
+import pandas as pd
 import plotly.express as px
+import heapq
 
-# 데이터 불러오기
-df_sum = pd.read_csv("people_sum.csv", encoding="cp949")
-df_gender = pd.read_csv("people_gender.csv", encoding="cp949")
+st.set_page_config(page_title="울산 에너지 소비 분석", layout="wide")
+st.title("⚡ 울산 에너지 소비 분석 및 최적 에너지 믹스 추천")
 
-st.set_page_config(page_title="인구 시각화 대시보드", layout="wide")
-st.title("📊 지역별 인구 피라미드 시각화")
-
-# 사용자 입력
-region = st.selectbox("지역을 선택하세요", df_sum["행정구역"].unique())
-age_range = st.slider("연령대 범위 선택", 0, 100, (0, 100))
-df_selected = df_gender[df_gender["행정구역"] == region]
-
-# 연령 필터링
-def filter_ages(cols, age_range):
-    result = []
-    for col in cols:
-        age = col.split("_")[-1].replace("세", "").replace("이상", "")
-        if age.isdigit():
-            age = int(age)
-            if age_range[0] <= age <= age_range[1]:
-                result.append(col)
-    return result
-
-male_cols = filter_ages([col for col in df_selected.columns if "남_" in col and "세" in col], age_range)
-female_cols = filter_ages([col for col in df_selected.columns if "여_" in col and "세" in col], age_range)
-
-# 숫자 파싱 함수
-def parse_number(val):
+# ✅ CSV 불러오기 함수
+def load_csv(uploaded_file):
     try:
-        return int(str(val).replace(",", ""))
-    except:
-        return 0
+        return pd.read_csv(uploaded_file, encoding='utf-8')
+    except UnicodeDecodeError:
+        return pd.read_csv(uploaded_file, encoding='cp949')
+    except pd.errors.EmptyDataError:
+        st.error("❌ CSV 파일에 읽을 수 있는 데이터가 없습니다.")
+        return None
 
-# 데이터 없을 때 처리
-if not male_cols or not female_cols:
-    st.warning("해당 연령대에 유효한 데이터가 없습니다.")
-    st.stop()
+# ✅ 파일 업로드
+uploaded_file = st.file_uploader("📎 울산 에너지 소비 CSV 파일 업로드", type=["csv"])
 
-# 값 변환
-male_series = df_selected[male_cols].iloc[0].apply(parse_number)
-female_series = df_selected[female_cols].iloc[0].apply(parse_number)
-age_labels_male = [col.split("_")[-1] for col in male_cols]
-age_labels_female = [col.split("_")[-1] for col in female_cols]
+if uploaded_file is not None:
+    df = load_csv(uploaded_file)
 
-# 최소 길이
-min_len = min(len(male_series), len(female_series), len(age_labels_male), len(age_labels_female))
-if min_len == 0:
-    st.warning("데이터가 부족합니다.")
-    st.stop()
+    if df is not None:
+        # ✅ 울산시 데이터 필터링
+        df = df[df["지역"] == "울산"].copy()
 
-# 안전하게 자르기
-age_labels = list(age_labels_male)[:min_len]
-male_counts = list(male_series)[:min_len]
-female_counts = list(female_series)[:min_len]
+        # ✅ 사용할 에너지원 매핑
+        energy_columns = {
+            "석탄": "석탄사용량(천토)",
+            "석유": "석유사용량(천토)",
+            "가스": "천연 및 도시가스사용량(천토)",
+            "전력": "전력사용량(천토)",
+            "열에너지": "열에너지사용량(천토)",
+            "신재생": "신재생사용량(천토)"
+        }
 
-# NaN 방지
-if any(pd.isnull(age_labels)) or any(pd.isnull(male_counts)) or any(pd.isnull(female_counts)):
-    st.warning("누락된 값이 존재합니다. 다른 조건을 선택해 주세요.")
-    st.stop()
+        # ✅ 연도 선택
+        year = st.selectbox("🔎 분석할 연도 선택", sorted(df["연도"].unique()))
+        row = df[df["연도"] == year].iloc[0]
 
-# 인구 피라미드용 데이터프레임
-df_plot = pd.DataFrame({
-    "연령": age_labels,
-    "남성": [-x for x in male_counts],
-    "여성": female_counts
-})
-df_melted = df_plot.melt(id_vars="연령", var_name="성별", value_name="인구수")
+        # ✅ 트리 구조 출력
+        tree = {
+            "화석에너지": {
+                "석탄": row[energy_columns["석탄"]],
+                "석유": row[energy_columns["석유"]],
+                "가스": row[energy_columns["가스"]],
+            },
+            "기타에너지": {
+                "전력": row[energy_columns["전력"]],
+                "열에너지": row[energy_columns["열에너지"]],
+                "신재생": row[energy_columns["신재생"]],
+            }
+        }
+        st.subheader("🌲 에너지 소비 트리 구조 (천톤 기준)")
+        st.json(tree)
 
-# 시각화
-fig = px.bar(
-    df_melted,
-    x="인구수",
-    y="연령",
-    color="성별",
-    orientation="h",
-    title=f"{region} 인구 피라미드 (연령대: {age_range[0]}세 ~ {age_range[1]}세)",
-    height=700
-)
+        # ✅ 정렬
+        sorted_data = sorted(
+            [(k, row[v]) for k, v in energy_columns.items()],
+            key=lambda x: x[1] if pd.notnull(x[1]) else 0,
+            reverse=True
+        )
+        st.subheader("📊 에너지원 소비량 정렬 (내림차순)")
+        for i, (k, v) in enumerate(sorted_data, 1):
+            st.write(f"{i}. {k}: {v} 천톤")
 
-st.plotly_chart(fig, use_container_width=True)
+        # ✅ 기준 소비량 입력 및 이진 탐색
+        def binary_search(arr, target):
+            low, high = 0, len(arr) - 1
+            while low <= high:
+                mid = (low + high) // 2
+                if arr[mid][1] == target:
+                    return mid
+                elif arr[mid][1] < target:
+                    high = mid - 1
+                else:
+                    low = mid + 1
+            return low
+
+        st.subheader("🔍 기준 소비량으로 탐색")
+        target = st.number_input("기준 소비량 입력 (천톤)", min_value=0.0, value=sorted_data[0][1])
+        idx = binary_search(sorted_data, target)
+        st.info(f"입력값과 가장 가까운 에너지원: {sorted_data[idx][0]} → {sorted_data[idx][1]} 천톤")
+
+        # ✅ 힙으로 최다 소비 에너지원 탐색
+        heap = [(-v if pd.notnull(v) else 0, k) for k, v in [(k, row[v]) for k, v in energy_columns.items()]]
+        heapq.heapify(heap)
+        top = heapq.heappop(heap)
+        st.success(f"🔥 최다 소비 에너지원: {top[1]} ({-top[0]} 천톤)")
+
+        # ✅ 시계열 그래프 (연도별 전체 소비 추이)
+        df_long = df.melt(id_vars="연도", value_vars=list(energy_columns.values()),
+                          var_name="에너지원", value_name="소비량")
+        df_long["에너지원"] = df_long["에너지원"].replace({v: k for k, v in energy_columns.items()})
+
+        st.subheader("📈 연도별 울산시 에너지원 소비 추이")
+        fig = px.line(df_long, x="연도", y="소비량", color="에너지원", markers=True)
+        st.plotly_chart(fig, use_container_width=True)
+else:
+    st.warning("📌 울산광역시 에너지 소비 CSV 파일을 먼저 업로드해주세요.")
