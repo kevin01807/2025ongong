@@ -2,135 +2,167 @@ import os
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from collections import deque
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.tree import DecisionTreeClassifier, _tree
+from sklearn.metrics import accuracy_score
+from collections import deque
 
-st.set_page_config(page_title="당뇨병 환자 위험도 관리 시스템", layout="wide")
-st.title("🩺 당뇨병 환자 위험도 스트림 처리 & 우선순위 관리")
+st.set_page_config(page_title="당뇨병 예측 시스템", layout="wide")
+st.title("🩺 당뇨병 예측 시스템")
 
-def safe_read_csv(path_or_buffer):
-    for enc in ('utf-8', 'cp949', 'euc-kr'):
-        try:
-            return pd.read_csv(path_or_buffer, encoding=enc)
-        except Exception:
-            continue
-    return None
+# ✅ 현재 파일 기준으로 csv 경로 지정
+file_path = os.path.join(os.path.dirname(__file__), "diabetes_data_upload.csv")
 
+# ✅ 데이터 불러오기 및 전처리
 @st.cache_data
-def load_data():
-    base = os.path.dirname(__file__)
-    df = safe_read_csv(os.path.join(base, "diabetes_data_upload.csv"))
+def load_data(path):
+    df = pd.read_csv(path)
+    df["class"] = df["class"].map({"Positive": 1, "Negative": 0})
+    binary_cols = df.columns.drop(["Age", "Gender", "class"])
+    for col in binary_cols:
+        df[col] = df[col].map({"Yes": 1, "No": 0})
+    df["Gender"] = df["Gender"].map({"Male": 1, "Female": 0})
     return df
 
-# 1) 데이터 로드 및 전처리
-df = load_data()
-if df is None:
-    st.error("❌ diabetes_data_upload.csv 파일을 로드할 수 없습니다.")
+try:
+    df = load_data(file_path)
+except FileNotFoundError:
+    st.error("❌ CSV 파일이 현재 디렉터리에 없습니다. 'diabetes_data_upload.csv'를 동일 폴더에 넣어주세요.")
     st.stop()
 
-# 매핑
-df["class"] = df["class"].map({"Positive":1, "Negative":0})
-binary_cols = df.columns.drop(["Age","Gender","class"])
-for col in binary_cols:
-    df[col] = df[col].map({"Yes":1,"No":0})
-df["Gender"] = df["Gender"].map({"Male":1,"Female":0})
+# 📊 데이터 시각화
+st.subheader("📈 나이대별 당뇨병 분포")
+fig = px.histogram(df, x="Age", color="class", barmode="group",
+                   color_discrete_map={1: "red", 0: "blue"},
+                   labels={"class": "당뇨병 여부"})
+st.plotly_chart(fig, use_container_width=True)
 
-# 간단한 모델 학습 (랜덤포레스트) -> risk_score
-X = df.drop(columns="class")
+# 🔍 머신러닝 예측 모델 학습
+X = df.drop(columns=["class"])
 y = df["class"]
-rf = RandomForestClassifier(n_estimators=50, random_state=42)
-rf.fit(X, y)
-df["risk_score"] = rf.predict_proba(X)[:,1]
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-# 2) 큐: 신규 환자 스트림 (FIFO)
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train, y_train)
+acc = accuracy_score(y_test, model.predict(X_test))
+st.success(f"✅ 랜덤 포레스트 정확도: {acc * 100:.2f}%")
+
+# --- 추가: 자료구조 & 알고리즘 시연 ---
+
+# 1) 큐 (Queue): 환자 데이터 FIFO 대기열
 queue = deque(df.to_dict("records"))
-st.subheader("▶ 신규 환자 대기열 (FIFO)")
-st.write(f"전체 대기 환자 수: {len(queue)}")
+st.subheader("▶ 큐 시연: 신규 환자 대기열 (FIFO)")
+st.write(f"현재 대기열 환자 수: {len(queue)}")
 
-# 처리할 환자 수 선택
-n = st.sidebar.slider("처리할 환자 수", 1, min(20, len(queue)), 5)
-processed = []
+# 2) 스택 (Stack): 고위험 환자 히스토리 (LIFO)
 stack = []
+n = st.sidebar.slider("FIFO로 처리할 환자 수", 1, min(20, len(queue)), 5)
+processed = []
 for _ in range(n):
     rec = queue.popleft()
     processed.append(rec)
-    # 3) 스택: 고위험 환자 히스토리 (risk_score > 0.5)
-    if rec["risk_score"] > 0.5:
+    # 위험 기준: Positive 판정
+    if rec["class"] == 1:
         stack.append(rec)
 
-st.write("처리된 환자 (처리 순서):")
-st.dataframe(pd.DataFrame(processed)[["Age","Gender","risk_score"]])
+st.write("처리된 환자 목록:")
+st.dataframe(pd.DataFrame(processed)[["Age", "Gender", "class"]])
 
-# 4) 스택(LIFO)에서 가장 최근 위험 사례 Top5
-st.subheader("⚠️ 고위험 환자 히스토리 Top5 (LIFO)")
+st.subheader("⚠️ 스택 시연: 고위험 환자 최근 Top5 (LIFO)")
 recent_high = stack[-5:][::-1]
-st.dataframe(pd.DataFrame(recent_high)[["Age","Gender","risk_score"]])
+st.dataframe(pd.DataFrame(recent_high)[["Age", "Gender", "class"]])
 
-# 5) 정렬: 남은 대기열 위험도 순 정렬
-st.subheader("🔢 남은 대기열 환자 위험도 순 정렬")
+# 3) 정렬 (Sorting): 남은 대기열 환자 class 내림차순 정렬
+st.subheader("🔢 정렬 시연: 남은 대기열 위험도 순 정렬")
 remaining = list(queue)
-sorted_remaining = sorted(remaining, key=lambda r: r["risk_score"], reverse=True)
-st.dataframe(pd.DataFrame(sorted_remaining)[["Age","Gender","risk_score"]].head(10))
+sorted_rem = sorted(remaining, key=lambda r: r["class"], reverse=True)
+st.dataframe(pd.DataFrame(sorted_rem)[["Age", "Gender", "class"]].head(10))
 
-# 6) 선형 탐색: 나이로 환자 찾기
-st.subheader("🔍 선형 탐색: 나이로 환자 조회")
-age_query = st.number_input("찾을 환자의 나이 입력", int(df["Age"].min()), int(df["Age"].max()))
-found = [r for r in remaining if r["Age"] == age_query]
-st.write(found or "해당 나이 환자가 대기열에 없습니다.")
+# 4) 이진 탐색 (Binary Search): 특정 위험도(class) 환자 첫 위치 찾기
+threshold = st.number_input("⚠️ 탐색할 class 기준값 (0 또는 1)", 0, 1, 1)
+# 리스트는 class 내림차순. 오름차순으로 뒤집어 탐색
+asc = sorted_rem[::-1]
+classes = [r["class"] for r in asc]
+lo, hi, idx = 0, len(classes)-1, len(classes)
+while lo <= hi:
+    mid = (lo + hi) // 2
+    if classes[mid] >= threshold:
+        idx = mid
+        hi = mid - 1
+    else:
+        lo = mid + 1
+first_idx = len(classes) - 1 - idx
+st.write(f"이진 탐색으로 class ≥ {threshold} 첫 위치: {first_idx}")
 
-# 7) 의사결정트리 학습 & 구조화
+# 5) 트리 (Decision Tree): 전위·중위·후위 순회
+from sklearn.tree import DecisionTreeClassifier, _tree
+
 dt = DecisionTreeClassifier(max_depth=3, random_state=42)
 dt.fit(X, y)
-
-# 노드 구조 추출
 tree_ = dt.tree_
 feature_names = X.columns.tolist()
 
-class Node:
-    def __init__(self, feature=None, threshold=None, left=None, right=None, value=None):
-        self.feature, self.threshold = feature, threshold
-        self.left, self.right = left, right
-        self.value = value
-
-def build_tree(node_id=0):
+# 트리 빌드
+def build(node_id=0):
     if tree_.feature[node_id] != _tree.TREE_UNDEFINED:
         name = feature_names[tree_.feature[node_id]]
         thr = tree_.threshold[node_id]
-        left = build_tree(tree_.children_left[node_id])
-        right = build_tree(tree_.children_right[node_id])
-        return Node(feature=name, threshold=thr, left=left, right=right)
+        left = build(tree_.children_left[node_id])
+        right = build(tree_.children_right[node_id])
+        return {"feature": name, "threshold": thr, "left": left, "right": right}
     else:
-        return Node(value=tree_.value[node_id])
+        return {"value": tree_.value[node_id].tolist()}
 
-root = build_tree()
+root = build()
 
-# 트리 순회
+# 순회 함수
 def preorder(node, out):
-    if node is None: return
-    out.append(f"{node.feature}<={node.threshold}" if node.feature else f"leaf:{node.value}")
-    preorder(node.left, out)
-    preorder(node.right, out)
+    if "feature" in node:
+        out.append(f"{node['feature']}≤{node['threshold']:.2f}")
+        preorder(node["left"], out); preorder(node["right"], out)
+    else:
+        out.append(f"leaf:{node['value']}")
 
 def inorder(node, out):
-    if node is None: return
-    inorder(node.left, out)
-    out.append(f"{node.feature}<={node.threshold}" if node.feature else f"leaf:{node.value}")
-    inorder(node.right, out)
+    if "feature" in node:
+        inorder(node["left"], out)
+        out.append(f"{node['feature']}≤{node['threshold']:.2f}")
+        inorder(node["right"], out)
+    else:
+        out.append(f"leaf:{node['value']}")
 
 def postorder(node, out):
-    if node is None: return
-    postorder(node.left, out)
-    postorder(node.right, out)
-    out.append(f"{node.feature}<={node.threshold}" if node.feature else f"leaf:{node.value}")
+    if "feature" in node:
+        postorder(node["left"], out); postorder(node["right"], out)
+        out.append(f"{node['feature']}≤{node['threshold']:.2f}")
+    else:
+        out.append(f"leaf:{node['value']}")
 
-pre, ino, post = [], [], []
-preorder(root, pre)
-inorder(root, ino)
-postorder(root, post)
+pre, inord, post = [], [], []
+preorder(root, pre); inorder(root, inord); postorder(root, post)
 
-st.subheader("🌳 Decision Tree 순회 결과")
-st.markdown(f"- **전위 순회(Pre-order)**: {pre}")
-st.markdown(f"- **중위 순회(In-order)**: {ino}")
-st.markdown(f"- **후위 순회(Post-order)**: {post}")
+st.subheader("🌳 트리 순회 결과")
+st.markdown(f"- **전위 순회**: {pre}")
+st.markdown(f"- **중위 순회**: {inord}")
+st.markdown(f"- **후위 순회**: {post}")
+
+# --- 기존 사용자 입력 예측 폼 ---
+
+st.subheader("🧪 내 증상으로 당뇨병 예측해보기")
+with st.form("predict_form"):
+    age = st.slider("나이", 10, 100, 45)
+    gender = st.radio("성별", ["남성", "여성"])
+    input_data = {"Age": age, "Gender": 1 if gender == "남성" else 0}
+    for col in X.columns:
+        if col not in ["Age", "Gender"]:
+            input_data[col] = st.radio(f"{col}", ["아님", "있음"]) == "있음"
+    submitted = st.form_submit_button("예측하기")
+
+if submitted:
+    input_df = pd.DataFrame([input_data])
+    prediction = model.predict(input_df)[0]
+    prob = model.predict_proba(input_df)[0][prediction]
+    if prediction == 1:
+        st.error(f"⚠️ 당뇨병 위험 있음 (예측 확률 {prob*100:.2f}%)")
+    else:
+        st.success(f"✅ 당뇨병 위험 낮음 (예측 확률 {prob*100:.2f}%)")
