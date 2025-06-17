@@ -1,175 +1,108 @@
-import os
+
 import streamlit as st
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 import plotly.express as px
-from collections import deque
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-from sklearn.tree import DecisionTreeClassifier, _tree
+from sklearn.linear_model import LinearRegression
+from scipy.integrate import solve_bvp
+from math import log2
+import os
 
-st.set_page_config(page_title="당뇨병 예측 시스템", layout="wide")
-st.title("🩺 당뇨병 예측 시스템")
-
-# ✅ 현재 파일 기준으로 csv 경로 지정
-file_path = os.path.join(os.path.dirname(__file__), "diabetes_data_upload.csv")
-
-# ✅ 데이터 불러오기 및 전처리
+# --------------------
+# 1. 데이터 불러오기
+# --------------------
 @st.cache_data
-def load_data(path):
-    df = pd.read_csv(path)
-    df["class"] = df["class"].map({"Positive": 1, "Negative": 0})
-    binary_cols = df.columns.drop(["Age", "Gender", "class"])
-    for col in binary_cols:
-        df[col] = df[col].map({"Yes": 1, "No": 0})
-    df["Gender"] = df["Gender"].map({"Male": 1, "Female": 0})
-    return df
+def load_data():
+    base_dir = os.path.dirname(__file__)
+    df_power = pd.read_csv(os.path.join(base_dir, "지역별_전력사용량_계약종별_정리본.csv"))
+    df_temp = pd.read_csv(os.path.join(base_dir, "통계청_SGIS_통계주제도_기상데이터_20240710.csv"))
+    df_hourly = pd.read_csv(os.path.join(base_dir, "한국전력거래소_시간별 전국 전력수요량_20241231.csv"))
+    df_sdg711 = pd.read_csv(os.path.join(base_dir, "7-1-1.csv"))
+    return df_power, df_temp, df_hourly, df_sdg711
 
-try:
-    df = load_data(file_path)
-except FileNotFoundError:
-    st.error("❌ CSV 파일이 현재 디렉터리에 없습니다. 'diabetes_data_upload.csv'를 동일 폴더에 넣어주세요.")
-    st.stop()
+df_power, df_temp, df_hourly, df_sdg711 = load_data()
 
-# 📊 데이터 시각화
-st.subheader("📈 나이대별 당뇨병 분포")
-fig = px.histogram(df, x="Age", color="class", barmode="group",
-                   color_discrete_map={1: "red", 0: "blue"},
-                   labels={"class": "당뇨병 여부"})
-st.plotly_chart(fig, use_container_width=True)
+# --------------------
+# 2. 샤논 엔트로피 계산
+# --------------------
+def compute_entropy(series):
+    counts = series.value_counts(normalize=True)
+    return -sum(p * log2(p) for p in counts if p > 0)
 
-# 🔍 머신러닝 예측 모델 학습
-X = df.drop(columns=["class"])
-y = df["class"]
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+st.title("⚡ 지역 간 전력 소비 분석 및 배전 경로 최적화")
+st.header("🔋 전력 사용량 기반 샤논 엔트로피 분석")
 
-model = RandomForestClassifier(n_estimators=100, random_state=42)
-model.fit(X_train, y_train)
-acc = accuracy_score(y_test, model.predict(X_test))
-st.success(f"✅ 랜덤 포레스트 정확도: {acc * 100:.2f}%")
+region_entropy = df_power.groupby('시군구')['사용량'].apply(compute_entropy).reset_index()
+region_entropy.columns = ['시군구', '샤논엔트로피']
+st.dataframe(region_entropy)
 
-# --- 추가: 자료구조 & 알고리즘 시연 ---
+fig = px.bar(region_entropy, x='시군구', y='샤논엔트로피', title="지역별 샤논 엔트로피")
+st.plotly_chart(fig)
 
-# 1) 큐 (Queue): 환자 데이터 FIFO 대기열
-queue = deque(df.to_dict("records"))
-st.subheader("▶ 큐 시연: 신규 환자 대기열 (FIFO)")
-st.write(f"현재 대기열 환자 수: {len(queue)}")
+# --------------------
+# 3. 온도 기반 전력 예측 회귀
+# --------------------
+st.header("🌡️ 온도 기반 전력 예측 회귀모델")
 
-# 2) 스택 (Stack): 고위험 환자 히스토리 (LIFO)
-stack = []
-n = st.sidebar.slider("FIFO로 처리할 환자 수", 1, min(20, len(queue)), 5)
-processed = []
-for _ in range(n):
-    rec = queue.popleft()
-    processed.append(rec)
-    # 위험 기준: Positive 판정
-    if rec["class"] == 1:
-        stack.append(rec)
+merged = pd.merge(df_power, df_temp, on='시군구')
+X = merged[['평균기온']]
+y = merged['사용량']
 
-st.write("처리된 환자 목록:")
-st.dataframe(pd.DataFrame(processed)[["Age", "Gender", "class"]])
+model = LinearRegression().fit(X, y)
+pred = model.predict(X)
 
-st.subheader("⚠️ 스택 시연: 고위험 환자 최근 Top5 (LIFO)")
-recent_high = stack[-5:][::-1]
-st.dataframe(pd.DataFrame(recent_high)[["Age", "Gender", "class"]])
+plt.figure(figsize=(6,4))
+plt.scatter(X, y, label='실제값')
+plt.plot(X, pred, color='red', label='예측값')
+plt.xlabel('평균기온')
+plt.ylabel('전력 사용량')
+plt.legend()
+st.pyplot(plt)
 
-# 3) 정렬 (Sorting): 남은 대기열 환자 class 내림차순 정렬
-st.subheader("🔢 정렬 시연: 남은 대기열 위험도 순 정렬")
-remaining = list(queue)
-sorted_rem = sorted(remaining, key=lambda r: r["class"], reverse=True)
-st.dataframe(pd.DataFrame(sorted_rem)[["Age", "Gender", "class"]].head(10))
+# --------------------
+# 4. 전력 불균형 점수 시각화 (지도)
+# --------------------
+st.header("🗺️ 지역별 전력 불균형 점수 지도 시각화")
 
-# 4) 이진 탐색 (Binary Search): 특정 위험도(class) 환자 첫 위치 찾기
-threshold = st.number_input("⚠️ 탐색할 class 기준값 (0 또는 1)", 0, 1, 1)
-# 리스트는 class 내림차순. 오름차순으로 뒤집어 탐색
-asc = sorted_rem[::-1]
-classes = [r["class"] for r in asc]
-lo, hi, idx = 0, len(classes)-1, len(classes)
-while lo <= hi:
-    mid = (lo + hi) // 2
-    if classes[mid] >= threshold:
-        idx = mid
-        hi = mid - 1
-    else:
-        lo = mid + 1
-first_idx = len(classes) - 1 - idx
-st.write(f"이진 탐색으로 class ≥ {threshold} 첫 위치: {first_idx}")
+mean_usage = df_power.groupby('시군구')['사용량'].mean()
+z_scores = (mean_usage - mean_usage.mean()) / mean_usage.std()
+z_df = pd.DataFrame({'시군구': z_scores.index, '불균형점수': z_scores.values})
+fig_map = px.bar(z_df, x='시군구', y='불균형점수', title="전력 불균형 점수 (Z-score)")
+st.plotly_chart(fig_map)
 
-# --- 5) 트리 (Decision Tree): 사람이 보기 좋은 순회 ---
-dt = DecisionTreeClassifier(max_depth=3, random_state=42)
-dt.fit(X, y)
-tree_ = dt.tree_
-feature_names = X.columns.tolist()
+# --------------------
+# 5. 변분법 기반 경로 최적화 예제
+# --------------------
+st.header("📈 변분법 기반 배전 경로 최적화 (예시)")
 
-def build_readable(node_id=0):
-    if tree_.feature[node_id] != _tree.TREE_UNDEFINED:
-        feat = feature_names[tree_.feature[node_id]]
-        thr = round(tree_.threshold[node_id], 2)
-        return {
-            "feature": feat,
-            "threshold": thr,
-            "left": build_readable(tree_.children_left[node_id]),
-            "right": build_readable(tree_.children_right[node_id])
-        }
-    else:
-        counts = tree_.value[node_id][0]
-        total = counts.sum()
-        pos_ratio = round(counts[1] / total, 2)
-        pred = "Positive" if pos_ratio > 0.5 else "Negative"
-        return {"leaf_pred": pred, "pos_prob": pos_ratio}
+def ode_system(x, y):
+    return np.vstack((y[1], -0.5 * y[0]))
 
-root = build_readable()
+def bc(ya, yb):
+    return np.array([ya[0], yb[0] - 1])
 
-def preorder_readable(node, out):
-    if "feature" in node:
-        out.append(f"{node['feature']} ≤ {node['threshold']}")
-        preorder_readable(node["left"], out)
-        preorder_readable(node["right"], out)
-    else:
-        out.append(f"▶ {node['leaf_pred']} ({node['pos_prob']*100:.0f}%)")
+x = np.linspace(0, 1, 5)
+y = np.zeros((2, x.size))
+y[0] = x
 
-def inorder_readable(node, out):
-    if "feature" in node:
-        inorder_readable(node["left"], out)
-        out.append(f"{node['feature']} ≤ {node['threshold']}")
-        inorder_readable(node["right"], out)
-    else:
-        out.append(f"▶ {node['leaf_pred']} ({node['pos_prob']*100:.0f}%)")
+sol = solve_bvp(ode_system, bc, x, y)
+x_plot = np.linspace(0, 1, 100)
+y_plot = sol.sol(x_plot)[0]
 
-def postorder_readable(node, out):
-    if "feature" in node:
-        postorder_readable(node["left"], out)
-        postorder_readable(node["right"], out)
-        out.append(f"{node['feature']} ≤ {node['threshold']}")
-    else:
-        out.append(f"▶ {node['leaf_pred']} ({node['pos_prob']*100:.0f}%)")
+plt.figure(figsize=(6,4))
+plt.plot(x_plot, y_plot, label='최적 경로(변분법)')
+plt.title("변분법 기반 최적 경로 예시")
+plt.xlabel("거리")
+plt.ylabel("전압/에너지/손실 등")
+plt.legend()
+st.pyplot(plt)
 
-pre, ino, post = [], [], []
-preorder_readable(root, pre)
-inorder_readable(root, ino)
-postorder_readable(root, post)
+# --------------------
+# 6. SDG 지표와 비교
+# --------------------
+st.header("📊 SDG 7.1.1 지표와 지역 전력 사용량 비교")
 
-st.subheader("🌳 트리 순회 결과 (사람 친화적)")
-st.markdown(f"- **전위 순회**: {pre}")
-st.markdown(f"- **중위 순회**: {ino}")
-st.markdown(f"- **후위 순회**: {post}")
-
-# --- 기존 사용자 입력 예측 폼 ---
-st.subheader("🧪 내 증상으로 당뇨병 예측해보기")
-with st.form("predict_form"):
-    age = st.slider("나이", 10, 100, 45)
-    gender = st.radio("성별", ["남성", "여성"])
-    input_data = {"Age": age, "Gender": 1 if gender == "남성" else 0}
-    for col in X.columns:
-        if col not in ["Age", "Gender"]:
-            input_data[col] = st.radio(f"{col}", ["아님", "있음"]) == "있음"
-    submitted = st.form_submit_button("예측하기")
-
-if submitted:
-    input_df = pd.DataFrame([input_data])
-    prediction = model.predict(input_df)[0]
-    prob = model.predict_proba(input_df)[0][prediction]
-    if prediction == 1:
-        st.error(f"⚠️ 당뇨병 위험 있음 (예측 확률 {prob*100:.2f}%)")
-    else:
-        st.success(f"✅ 당뇨병 위험 낮음 (예측 확률 {prob*100:.2f}%)")
+df_compare = pd.merge(df_power.groupby('시군구')['사용량'].mean().reset_index(), df_sdg711, on='시군구', how='inner')
+df_compare.columns = ['시군구', '평균전력사용량', 'SDG7.1.1값']
+st.dataframe(df_compare)
