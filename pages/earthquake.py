@@ -1,82 +1,111 @@
+# 전체 Streamlit 코드 작성
+
+full_code = '''
 import streamlit as st
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import plotly.express as px
+from sklearn.linear_model import LinearRegression
+from scipy.integrate import solve_bvp
+from math import log2
 
-st.set_page_config(page_title="SDGs 9: 설비 이상 감지 시스템", layout="wide")
-
-st.title("🔧 SDGs 9 기반 진동·온도 이상 감지 시스템")
-st.markdown("스마트팩토리 설비에서 수집된 진동/온도 데이터를 활용하여 이상 여부를 진단하고 시각화하는 시스템입니다.")
-st.markdown("**지속가능한 산업화(SDGs 9)**를 위해 예측 유지보수 기술을 접목한 자료구조+알고리즘 프로젝트입니다.")
-
-# ✅ 시뮬레이션 데이터 생성 함수
+# --------------------
+# 1. 데이터 불러오기
+# --------------------
 @st.cache_data
-def generate_simulation_data():
-    np.random.seed(42)
-    time = pd.date_range(start="2025-06-01", periods=100, freq="H")
-    temperature = np.random.normal(loc=50, scale=5, size=100)
-    vibration = np.random.normal(loc=30, scale=10, size=100)
-    temperature[80:] += np.linspace(5, 20, 20)
-    vibration[85:] += np.linspace(10, 30, 15)
+def load_data():
+    df_power = pd.read_csv("지역별_전력사용량_계약종별_정리본.csv")
+    df_temp = pd.read_csv("통계청_SGIS_통계주제도_기상데이터_20240710.csv")
+    df_hourly = pd.read_csv("한국전력거래소_시간별 전국 전력수요량_20241231.csv")
+    return df_power, df_temp, df_hourly
 
-    df = pd.DataFrame({
-        "Time": time,
-        "Temperature": temperature,
-        "Vibration": vibration
-    })
-    return df
+df_power, df_temp, df_hourly = load_data()
 
-# ✅ 전처리 함수
-def preprocess_data(df):
-    df["Time"] = pd.to_datetime(df["Time"])
-    df["Temp_Status"] = np.where(df["Temperature"] > 65, "이상", "정상")
-    df["Vib_Status"] = np.where(df["Vibration"] > 50, "이상", "정상")
-    df["System_Status"] = np.where(
-        (df["Temp_Status"] == "이상") | (df["Vib_Status"] == "이상"),
-        "경고", "정상"
-    )
-    return df
+# --------------------
+# 2. 샤논 엔트로피 계산
+# --------------------
+def compute_entropy(series):
+    counts = series.value_counts(normalize=True)
+    return -sum(p * log2(p) for p in counts if p > 0)
 
-# ✅ 사이드바 - CSV 업로드 or 시뮬레이션 선택
-st.sidebar.header("📁 데이터 선택")
-uploaded_file = st.sidebar.file_uploader("CSV 파일 업로드 (Time, Temperature, Vibration 포함)", type=["csv"])
+st.title("지역 간 전력 소비 분석 및 배전 경로 최적화")
+st.header("🔋 전력 사용량 기반 샤논 엔트로피 분석")
 
-if uploaded_file:
-    df = pd.read_csv(uploaded_file)
-    st.sidebar.success("✅ 업로드 완료!")
-else:
-    df = generate_simulation_data()
-    st.sidebar.info("💡 업로드된 파일이 없어서 시뮬레이션 데이터를 사용합니다.")
+region_entropy = df_power.groupby('시군구')['사용량'].apply(compute_entropy).reset_index()
+region_entropy.columns = ['시군구', '샤논엔트로피']
+st.dataframe(region_entropy)
 
-# ✅ 데이터 전처리
-df = preprocess_data(df)
+fig = px.bar(region_entropy, x='시군구', y='샤논엔트로피', title="지역별 샤논 엔트로피")
+st.plotly_chart(fig)
 
-# ✅ 시각화
-st.subheader("📈 시간별 온도/진동 그래프")
-fig1 = px.line(df, x="Time", y=["Temperature", "Vibration"], title="온도 및 진동 변화 추이")
-st.plotly_chart(fig1, use_container_width=True)
+# --------------------
+# 3. 온도 기반 전력 예측 회귀
+# --------------------
+st.header("🌡️ 온도 기반 전력 예측 회귀모델")
 
-st.subheader("🛑 이상 상태 분포 (Pie Chart)")
-status_counts = df["System_Status"].value_counts().reset_index()
-status_counts.columns = ["Status", "Count"]
-fig2 = px.pie(status_counts, names="Status", values="Count", color="Status",
-              color_discrete_map={"정상": "green", "경고": "red"})
-st.plotly_chart(fig2, use_container_width=True)
+merged = pd.merge(df_power, df_temp, on='시군구')
+X = merged[['평균기온']]
+y = merged['사용량']
 
-st.subheader("📋 이상 데이터 목록 (상위 10개)")
-st.dataframe(df[df["System_Status"] == "경고"].head(10))
+model = LinearRegression().fit(X, y)
+pred = model.predict(X)
 
-# ✅ 알고리즘 설명
-with st.expander("🧠 사용한 자료구조와 알고리즘 설명"):
-    st.markdown("""
-    - **큐**: 센서 데이터를 시간 순서대로 저장하여 처리
-    - **이진 탐색**: 임계값 초과 시점 탐색
-    - **정렬 알고리즘**: 진동/온도 기준 정렬로 위험도 우선 탐지
-    """)
+plt.figure(figsize=(6,4))
+plt.scatter(X, y, label='실제값')
+plt.plot(X, pred, color='red', label='예측값')
+plt.xlabel('평균기온')
+plt.ylabel('전력 사용량')
+plt.legend()
+st.pyplot(plt)
 
-# ✅ 출처 표기
-with st.expander("📚 데이터 출처 및 SDGs 연계"):
-    st.markdown("""
-    - **SDGs Goal 9**: 지속 가능한 산업화와 사회기반시설 구축을 위한 목표
-    - **데이터 출처**: 업로드된 CSV 파일 또는 시뮬레이션
-    """)
+# --------------------
+# 4. 전력 불균형 점수 시각화 (지도)
+# --------------------
+st.header("🗺️ 지역별 전력 불균형 점수 지도 시각화")
+
+mean_usage = df_power.groupby('시군구')['사용량'].mean()
+std_usage = df_power.groupby('시군구')['사용량'].std()
+z_scores = (mean_usage - mean_usage.mean()) / mean_usage.std()
+
+z_df = pd.DataFrame({'시군구': z_scores.index, '불균형점수': z_scores.values})
+fig_map = px.choropleth(z_df, locations='시군구', locationmode='geojson-id',
+                        color='불균형점수',
+                        color_continuous_scale='YlOrRd',
+                        title="지역 간 전력 불균형 지도 (z-score)")
+st.plotly_chart(fig_map)
+
+# --------------------
+# 5. 변분법 기반 경로 최적화 예제
+# --------------------
+st.header("📈 변분법 기반 배전 경로 최적화 (예시)")
+
+def ode_system(x, y):
+    return np.vstack((y[1], -0.5 * y[0]))
+
+def bc(ya, yb):
+    return np.array([ya[0], yb[0] - 1])
+
+x = np.linspace(0, 1, 5)
+y = np.zeros((2, x.size))
+y[0] = x
+
+sol = solve_bvp(ode_system, bc, x, y)
+x_plot = np.linspace(0, 1, 100)
+y_plot = sol.sol(x_plot)[0]
+
+plt.figure(figsize=(6,4))
+plt.plot(x_plot, y_plot, label='최적 경로(변분법)')
+plt.title("변분법 기반 최적 경로 예시")
+plt.xlabel("거리")
+plt.ylabel("전압/에너지/손실 등")
+plt.legend()
+st.pyplot(plt)
+'''
+
+# 저장
+with open("/mnt/data/streamlit_full_power_analysis.py", "w") as f:
+    f.write(full_code)
+
+"/mnt/data/streamlit_full_power_analysis.py"
+
