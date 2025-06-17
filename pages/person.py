@@ -101,3 +101,44 @@ with tab3:
 
 st.caption("Made for SDGs 7.1 / 9.4 | Shannon Entropy + Variational Method + 자료구조 실습")
 
+# 2. 샤논 엔트로피 계산
+# --------------------
+def compute_entropy(series):
+    counts = series.value_counts(normalize=True)
+    return -sum(p * log2(p) for p in counts if p > 0)
+
+st.title("📊 지역 간 전력 소비 분석 및 배전 경로 최적화")
+st.header("🔋 전력 사용량 기반 샤논 엔트로피 분석")
+
+entropy_df = df_power.groupby("시군구")["사용량"].apply(compute_entropy).reset_index()
+entropy_df.columns = ["시군구", "샤논엔트로피"]
+st.dataframe(entropy_df)
+
+fig = px.bar(entropy_df, x="시군구", y="샤논엔트로피", title="지역별 샤논 엔트로피")
+st.plotly_chart(fig)
+
+# --------------------
+# 3. 변분법 기반 경로 최적화 예시
+# --------------------
+st.header("📈 변분법 기반 배전 경로 최적화 (예시)")
+
+def ode_system(x, y):
+    return np.vstack((y[1], -0.5 * y[0]))
+
+def bc(ya, yb):
+    return np.array([ya[0], yb[0] - 1])
+
+x = np.linspace(0, 1, 5)
+y = np.zeros((2, x.size))
+y[0] = x
+
+sol = solve_bvp(ode_system, bc, x, y)
+x_plot = np.linspace(0, 1, 100)
+y_plot = sol.sol(x_plot)[0]
+
+plt.figure(figsize=(6,4))
+plt.plot(x_plot, y_plot, label='최적 경로 (변분법)')
+plt.xlabel("거리")
+plt.ylabel("전압/에너지/손실 등")
+plt.legend()
+st.pyplot(plt)
