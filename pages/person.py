@@ -3,16 +3,15 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import plotly.express as px
+from sklearn.linear_model import LinearRegression
+from scipy.integrate import solve_bvp
+from math import log2
 from collections import deque
-import heapq
 import os
 
-st.set_page_config(layout="wide")
-st.title("⚡ 지역별 전력 사용 분석 및 자료구조 알고리즘 탐색")
-
-# 1. 데이터 불러오기 (업로드된 파일 기반)
-@st.cache_data
-
+# --------------------
+# 데이터 불러오기
+# --------------------
 @st.cache_data
 def load_data():
     base_dir = os.path.dirname(__file__)
@@ -23,104 +22,59 @@ def load_data():
 
 df_power, df_temp, df_hourly = load_data()
 
-# 2. 전처리 - 월별 합계 열 추가
-df_power['사용량'] = df_power[[f"{i}월" for i in range(1,13)]].sum(axis=1)
-
-# 3. 샤논 엔트로피 계산 함수
-def compute_entropy(x):
-    p = x / x.sum()
-    return -(p * np.log2(p)).sum()
-
-entropy_df = df_power.groupby("시군구")["사용량"].apply(compute_entropy).reset_index(name="샤논 엔트로피")
-
-# 4. 변분법 기반 최적 사용량 분석
-def variational_optimization(values):
-    gradients = np.gradient(values)
-    return np.argmin(np.abs(gradients))
-
-hourly_mean = df_hourly.iloc[:, 1:].mean()
-optimal_hour = variational_optimization(hourly_mean)
-
-# 5. 큐 / 스택 시뮬레이션 (전력 수요 우선순위)
-power_queue = deque(df_hourly.iloc[0, 1:].tolist())
-power_stack = list(df_hourly.iloc[-1, 1:].tolist())
-
-# 6. 정렬 + 탐색 알고리즘 (우선순위 지역)
-usage_by_region = df_power.groupby("시군구")["사용량"].sum().reset_index()
-usage_sorted = usage_by_region.sort_values(by="사용량", ascending=False).reset_index(drop=True)
-
-def binary_search(region):
-    sorted_names = usage_sorted["시군구"].tolist()
-    left, right = 0, len(sorted_names) - 1
-    while left <= right:
-        mid = (left + right) // 2
-        if sorted_names[mid] == region:
-            return mid
-        elif sorted_names[mid] < region:
-            left = mid + 1
-        else:
-            right = mid - 1
-    return -1
-
-# 7. 시각화
-tab1, tab2, tab3 = st.tabs(["📊 전력 사용량 분석", "🌡 기온 + 전력 상관관계", "📚 자료구조 알고리즘"])
-
-with tab1:
-    fig = px.bar(usage_sorted.head(10), x="시군구", y="사용량", title="전력 사용량 상위 10개 지역")
-    st.plotly_chart(fig, use_container_width=True)
-
-with tab2:
-    merged = pd.merge(df_power, df_temp, left_on="시도", right_on="시도명")
-    fig2 = px.scatter(merged, x="평균기온값", y="사용량", color="시도명", title="평균기온 vs 전력 사용량")
-    st.plotly_chart(fig2, use_container_width=True)
-
-with tab3:
-    st.subheader("📌 큐 구조: 시간순 전력 수요")
-    st.write(list(power_queue))
-    st.subheader("📌 스택 구조: 최근 전력 수요")
-    st.write(list(power_stack[::-1]))
-
-    st.subheader("🔍 이진 탐색으로 지역 찾기")
-    search_target = st.text_input("검색할 시군구 입력:")
-    if search_target:
-        idx = binary_search(search_target)
-        if idx >= 0:
-            st.success(f"{search_target} 지역은 사용량 순위 {idx + 1}위입니다.")
-        else:
-            st.error("해당 지역은 데이터에 없습니다.")
-
-    st.subheader("📈 시간대별 전력 수요 평균")
-    fig3, ax = plt.subplots()
-    ax.plot(hourly_mean.index, hourly_mean.values)
-    ax.axvline(optimal_hour + 1, color='red', linestyle='--', label='최적 사용 시간')
-    ax.set_title("평균 전력 수요 (시간별)")
-    ax.set_xlabel("시간대")
-    ax.set_ylabel("kWh")
-    ax.legend()
-    st.pyplot(fig3)
-
-st.caption("Made for SDGs 7.1 / 9.4 | Shannon Entropy + Variational Method + 자료구조 실습")
-
-# 2. 샤논 엔트로피 계산
+# --------------------
+# 샤논 엔트로피 계산
 # --------------------
 def compute_entropy(series):
     counts = series.value_counts(normalize=True)
     return -sum(p * log2(p) for p in counts if p > 0)
 
-st.title("📊 지역 간 전력 소비 분석 및 배전 경로 최적화")
-st.header("🔋 전력 사용량 기반 샤논 엔트로피 분석")
+st.title("📊 지역 간 전력 소비 분석 및 경로 최적화")
+st.subheader("1️⃣ 샤논 엔트로피 기반 지역 전력 다양성 분석")
 
 entropy_df = df_power.groupby("시군구")["사용량"].apply(compute_entropy).reset_index()
 entropy_df.columns = ["시군구", "샤논엔트로피"]
 st.dataframe(entropy_df)
 
-fig = px.bar(entropy_df, x="시군구", y="샤논엔트로피", title="지역별 샤논 엔트로피")
-st.plotly_chart(fig)
+fig_entropy = px.bar(entropy_df, x="시군구", y="샤논엔트로피", title="지역별 전력 사용 샤논 엔트로피")
+st.plotly_chart(fig_entropy)
 
 # --------------------
-# 3. 변분법 기반 경로 최적화 예시
+# 온도 기반 전력 예측 회귀
 # --------------------
-st.header("📈 변분법 기반 배전 경로 최적화 (예시)")
+st.subheader("2️⃣ 온도 기반 전력 예측 회귀")
+
+merged = pd.merge(df_power, df_temp, on="시군구")
+X = merged[["평균기온"]]
+y = merged["사용량"]
+
+model = LinearRegression().fit(X, y)
+pred = model.predict(X)
+
+plt.figure()
+plt.scatter(X, y, label="실제값")
+plt.plot(X, pred, color="red", label="예측값")
+plt.xlabel("평균기온")
+plt.ylabel("전력 사용량")
+plt.legend()
+st.pyplot(plt)
+
+# --------------------
+# z-score 지도 시각화
+# --------------------
+st.subheader("3️⃣ 전력 사용량 불균형 지도")
+
+mean_usage = df_power.groupby("시군구")["사용량"].mean()
+z_scores = (mean_usage - mean_usage.mean()) / mean_usage.std()
+z_df = pd.DataFrame({"시군구": z_scores.index, "불균형점수": z_scores.values})
+
+fig_map = px.bar(z_df, x="시군구", y="불균형점수", title="지역별 전력 사용 불균형 (z-score)")
+st.plotly_chart(fig_map)
+
+# --------------------
+# 변분법 기반 경로 최적화
+# --------------------
+st.subheader("4️⃣ 변분법 기반 최적 경로 계산 예시")
 
 def ode_system(x, y):
     return np.vstack((y[1], -0.5 * y[0]))
@@ -136,9 +90,49 @@ sol = solve_bvp(ode_system, bc, x, y)
 x_plot = np.linspace(0, 1, 100)
 y_plot = sol.sol(x_plot)[0]
 
-plt.figure(figsize=(6,4))
-plt.plot(x_plot, y_plot, label='최적 경로 (변분법)')
+plt.figure()
+plt.plot(x_plot, y_plot, label="최적 경로")
 plt.xlabel("거리")
-plt.ylabel("전압/에너지/손실 등")
+plt.ylabel("전압/손실량")
+plt.title("변분법 최적 경로 예시")
 plt.legend()
 st.pyplot(plt)
+
+# --------------------
+# 스택, 큐, 정렬, 탐색 시뮬레이션
+# --------------------
+st.subheader("5️⃣ 자료구조 기반 분석 시뮬레이션")
+
+# 큐: 시간 순 대기열
+power_queue = deque(df_hourly["계통한계예비력(MW)"][:10])
+st.write("📦 전력 수요 예비력 대기열 (큐)")
+st.write(list(power_queue))
+
+# 스택: 마지막 5개 시간대 위험지역 기록
+top_regions = df_power.sort_values("사용량", ascending=False)["시군구"].unique()[:5]
+region_stack = list(top_regions)
+st.write("🗂️ 최근 고위험 지역 스택")
+st.write(region_stack)
+
+# 정렬: 평균기온 기준 정렬
+sorted_temp = df_temp.sort_values("평균기온", ascending=False)
+st.write("🌡️ 평균기온 내림차순 정렬")
+st.dataframe(sorted_temp[["시군구", "평균기온"]])
+
+# 이진 탐색: 특정 온도 이상 지역 찾기
+def binary_search_region(df, temp_threshold):
+    df_sorted = df.sort_values("평균기온").reset_index()
+    left, right = 0, len(df_sorted) - 1
+    result = []
+    while left <= right:
+        mid = (left + right) // 2
+        if df_sorted.loc[mid, "평균기온"] >= temp_threshold:
+            result.append(df_sorted.loc[mid, "시군구"])
+            right = mid - 1
+        else:
+            left = mid + 1
+    return result
+
+search_temp = st.slider("🔍 온도 이상 지역 찾기 (이진 탐색)", min_value=-5, max_value=35, value=25)
+found_regions = binary_search_region(df_temp, search_temp)
+st.write(f"🌍 {search_temp}℃ 이상 지역:", found_regions)
