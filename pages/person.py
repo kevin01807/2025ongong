@@ -6,7 +6,7 @@ import plotly.express as px
 from scipy.stats import entropy
 from scipy.integrate import solve_bvp
 
-# 1. 데이터 업로드 (실제 파일 로딩은 생략, 예시로 설명)
+# 1. 데이터 업로드 (실제 파일 로딩은 생략, 예시로 설명) 
 @st.cache_data
 def load_data():
     df_power = pd.read_csv("지역별_전력사용량_계약종별_정리본.csv")
