@@ -15,7 +15,7 @@ st.set_page_config(layout="wide")
 # --------------------
 @st.cache_data
 def load_data():
-    df_power = pd.read_csv("지역별_전력사용량_계약종별_정리본.csv")
+    df_power = pd.read_csv("power_by_region.csv")
     df_temp = pd.read_csv("통계청_SGIS_통계주제도_기상데이터_20240710.csv")
     df_hourly = pd.read_csv("한국전력거래소_시간별 전국 전력수요량_20241231.csv")
     df_sdg711 = pd.read_csv("7-1-1.csv")
