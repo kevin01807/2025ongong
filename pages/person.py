@@ -1,4 +1,3 @@
-# 📦 라이브러리 불러오기
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -8,117 +7,127 @@ from sklearn.linear_model import LinearRegression
 from scipy.integrate import solve_bvp
 from math import log2
 from collections import deque
-import heapq
-import os
 
-# 📂 데이터 불러오기
+# --------------------
+# 1. 데이터 불러오기
+# --------------------
 @st.cache_data
+
 def load_data():
-    base_dir = os.path.dirname(__file__)
-    df_power = pd.read_csv(os.path.join(base_dir, "power_by_region.csv"))
-    df_temp = pd.read_csv(os.path.join(base_dir, "temperature_by_region.csv"))
-    df_hourly = pd.read_csv(os.path.join(base_dir, "hourly_power.csv"))
+    df_power = pd.read_csv("power_by_region.csv")
+    df_temp = pd.read_csv("temperature_by_region.csv")
+    df_hourly = pd.read_csv("hourly_power.csv")
     return df_power, df_temp, df_hourly
 
 df_power, df_temp, df_hourly = load_data()
 
-st.title("⚡ 전력 사용 분석 + 자료구조 알고리즘 융합 프로젝트")
+# --------------------
+# 2. 샤논 엔트로피 계산
+# --------------------
+def compute_entropy(series):
+    counts = series.value_counts(normalize=True)
+    return -sum(p * log2(p) for p in counts if p > 0)
 
-# 📊 선형 자료구조 - 큐: 전력 수요 대기열 시뮬레이션
-st.header("📌 큐 자료구조: 시간 순 전력 수요 대기열 시뮬레이션")
-power_queue = deque(df_hourly['수요량'][:10])
-st.write("대기열 상태:", list(power_queue))
-power_queue.append(50000)
-power_queue.popleft()
-st.write("변경 후 대기열:", list(power_queue))
+st.title("지역 간 전력 소비 분석 및 배전 경로 최적화")
+st.header("🔋 전력 사용량 기반 샤논 엔트로피 분석")
 
-# 📦 스택 구조 - 역추적 기반 전력 소비 이력 저장
-st.header("📌 스택 자료구조: 지역별 소비 이력 역추적")
-selected_city = st.selectbox("지역 선택 (시군구)", df_power['시군구'].unique())
-df_selected = df_power[df_power['시군구'] == selected_city]
-stack = []
-for m in ['1월', '2월', '3월', '4월', '5월']:
-    stack.append(df_selected[m].sum())
-st.write("소비 이력 (최근→과거):", stack[::-1])
+region_entropy = df_power.groupby('시군구')['사용량'].apply(compute_entropy).reset_index()
+region_entropy.columns = ['시군구', '샤논엔트로피']
+st.dataframe(region_entropy)
 
-# 📊 정렬 알고리즘: 지역별 평균 사용량 정렬
-st.header("📌 정렬 알고리즘: 지역 평균 사용량 내림차순 정렬")
-df_power['사용량합'] = df_power[['1월', '2월', '3월', '4월', '5월']].sum(axis=1)
-sorted_df = df_power.groupby('시군구')['사용량합'].mean().sort_values(ascending=False).reset_index()
-st.dataframe(sorted_df)
+fig = px.bar(region_entropy, x='시군구', y='샤논엔트로피', title="지역별 샤논 엔트로피")
+st.plotly_chart(fig)
 
-# 🔍 이진 탐색: 특정 사용량을 가진 지역 탐색
-st.header("📌 이진 탐색: 사용량 기반 지역 탐색")
-target = st.number_input("찾고 싶은 사용량", min_value=0)
-sorted_list = sorted_df['사용량합'].tolist()
+# --------------------
+# 3. 온도 기반 전력 예측 회귀
+# --------------------
+st.header("🌡️ 온도 기반 전력 예측 회귀모델")
 
-def binary_search(data, target):
-    low, high = 0, len(data) - 1
-    while low <= high:
-        mid = (low + high) // 2
-        if data[mid] == target:
-            return mid
-        elif data[mid] < target:
-            high = mid - 1
-        else:
-            low = mid + 1
-    return -1
-
-index = binary_search(sorted_list, target)
-if index != -1:
-    st.success(f"{target} 사용량을 가진 지역: {sorted_df.iloc[index]['시군구']}")
-else:
-    st.warning("해당 사용량을 가진 지역이 없습니다.")
-
-# 🌲 트리 구조: 지역 간 위계 구조 시각화 (간단 계층 표현)
-st.header("📌 트리 구조: 시도 → 시군구 계층 구조")
-tree = {}
-for _, row in df_power.iterrows():
-    sido = row['시도']
-    sigungu = row['시군구']
-    if sido not in tree:
-        tree[sido] = set()
-    tree[sido].add(sigungu)
-for sido in sorted(tree.keys()):
-    st.markdown(f"**{sido}**")
-    st.markdown(", ".join(tree[sido]))
-
-# 📈 회귀 분석: 온도 기반 예측
-st.header("🌡️ 온도 기반 회귀 분석")
 merged = pd.merge(df_power, df_temp, on='시군구')
 X = merged[['평균기온']]
-y = merged['사용량합']
+y = merged['사용량']
+
 model = LinearRegression().fit(X, y)
 pred = model.predict(X)
-plt.figure()
-plt.scatter(X, y, label='실제')
-plt.plot(X, pred, color='red', label='예측')
+
+plt.figure(figsize=(6,4))
+plt.scatter(X, y, label='실제값')
+plt.plot(X, pred, color='red', label='예측값')
+plt.xlabel('평균기온')
+plt.ylabel('전력 사용량')
 plt.legend()
 st.pyplot(plt)
 
-# 🔢 샤논 엔트로피
-st.header("🧮 샤논 엔트로피 기반 지역 불균형 측정")
-def entropy(s):
-    p = s.value_counts(normalize=True)
-    return -sum(p_i * log2(p_i) for p_i in p if p_i > 0)
+# --------------------
+# 4. 전력 불균형 점수 시각화 (지도)
+# --------------------
+st.header("🗺️ 지역별 전력 불균형 점수 지도 시각화")
 
-df_entropy = df_power.groupby('시군구')['사용량합'].apply(entropy).reset_index()
-df_entropy.columns = ['시군구', '샤논엔트로피']
-fig = px.bar(df_entropy, x='시군구', y='샤논엔트로피')
-st.plotly_chart(fig)
+mean_usage = df_power.groupby('시군구')['사용량'].mean()
+std_usage = df_power.groupby('시군구')['사용량'].std()
+z_scores = (mean_usage - mean_usage.mean()) / mean_usage.std()
 
-# 🔧 변분법 경로 최적화 예시
-st.header("🛠️ 변분법 기반 경로 최적화 (예시)")
-from scipy.integrate import solve_bvp
+z_df = pd.DataFrame({'시군구': z_scores.index, '불균형점수': z_scores.values})
+fig_map = px.bar(z_df, x='시군구', y='불균형점수', title="지역 간 전력 불균형 점수 (z-score)")
+st.plotly_chart(fig_map)
 
-def ode_sys(x, y): return np.vstack((y[1], -0.5 * y[0]))
-def bc(ya, yb): return np.array([ya[0], yb[0]-1])
+# --------------------
+# 5. 변분법 기반 경로 최적화 예제
+# --------------------
+st.header("📈 변분법 기반 배전 경로 최적화 (예시)")
+
+def ode_system(x, y):
+    return np.vstack((y[1], -0.5 * y[0]))
+
+def bc(ya, yb):
+    return np.array([ya[0], yb[0] - 1])
+
 x = np.linspace(0, 1, 5)
 y = np.zeros((2, x.size))
-sol = solve_bvp(ode_sys, bc, x, y)
+y[0] = x
+
+sol = solve_bvp(ode_system, bc, x, y)
 x_plot = np.linspace(0, 1, 100)
 y_plot = sol.sol(x_plot)[0]
-plt.figure()
-plt.plot(x_plot, y_plot)
-plt.title("변분법 기반 최적 경로")
+
+plt.figure(figsize=(6,4))
+plt.plot(x_plot, y_plot, label='최적 경로(변분법)')
+plt.title("변분법 기반 최적 경로 예시")
+plt.xlabel("거리")
+plt.ylabel("전압/에너지/손실 등")
+plt.legend()
 st.pyplot(plt)
+
+# --------------------
+# 6. 자료구조 (큐, 스택) 및 탐색, 정렬 예시
+# --------------------
+st.header("🧠 자료구조 · 알고리즘 적용 예시")
+
+# 큐 (Queue): 전력 수요 대기열
+power_queue = deque(df_hourly.iloc[0, 1:11])  # 1시~10시 수요량 큐
+st.write("**전력 수요 큐 (1~10시):**", list(power_queue))
+
+# 스택 (Stack): 고부하 시간 히스토리
+high_load_stack = []
+threshold = df_hourly.iloc[0, 1:25].mean()
+for hour, value in enumerate(df_hourly.iloc[0, 1:25], start=1):
+    if value > threshold:
+        high_load_stack.append((hour, value))
+st.write("**고부하 시간 스택:**", high_load_stack[::-1])  # 후입선출 출력
+
+# 탐색: 특정 시간대 전력 수요 이진 탐색
+from bisect import bisect_left
+sorted_usage = sorted(df_hourly.iloc[0, 1:25])
+target = 60000
+pos = bisect_left(sorted_usage, target)
+st.write(f"**60000 이상 수요 첫 위치 (정렬 후):** {pos}, 값: {sorted_usage[pos] if pos < len(sorted_usage) else '없음'}")
+
+# 정렬: 전력 수요 정렬 결과
+sorted_df = df_hourly.iloc[0, 1:25].sort_values(ascending=False)
+st.write("**정렬된 시간대별 전력 수요:**")
+st.dataframe(sorted_df)
+
+# 트리 구조 예시: 지역별 → 월별 사용량 계층 출력
+st.write("**지역별 트리 구조 예시**")
+tree_data = df_power.groupby(['시군구', '월'])['사용량'].sum().unstack().fillna(0)
+st.dataframe(tree_data)
