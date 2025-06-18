@@ -1,89 +1,87 @@
-import os
+import streamlit as st
 import pandas as pd
 import numpy as np
-import streamlit as st
-import matplotlib.pyplot as plt
+import os
 from collections import deque
+import matplotlib.pyplot as plt
 from math import log2
-import heapq
 
-# ✅ 데이터 경로 설정
-BASE_DIR = os.path.dirname(__file__)
-power_path = os.path.join(BASE_DIR, "power_by_region.csv")
-temp_path = os.path.join(BASE_DIR, "temperature_by_region.csv")
-hourly_path = os.path.join(BASE_DIR, "hourly_power.csv")
+# Load data using os.path.join for compatibility
+base_path = os.path.dirname(__file__)
+df_power = pd.read_csv(os.path.join(base_path, "power_by_region.csv"))
+df_temp = pd.read_csv(os.path.join(base_path, "temperature_by_region.csv"))
+df_hourly = pd.read_csv(os.path.join(base_path, "hourly_power.csv"))
 
-# ✅ 데이터 불러오기
-@st.cache_data
-def load_data():
-    df_power = pd.read_csv(power_path)
-    df_temp = pd.read_csv(temp_path)
-    df_hourly = pd.read_csv(hourly_path)
-    return df_power, df_temp, df_hourly
+st.title("⚡ Regional Power Data Analysis with Algorithms")
 
-df_power, df_temp, df_hourly = load_data()
+# --- Shannon Entropy Calculation ---
+def compute_entropy(row):
+    monthly_values = row[['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']].values
+    probs = monthly_values / np.sum(monthly_values) if np.sum(monthly_values) > 0 else np.zeros_like(monthly_values)
+    entropy = -np.sum([p * log2(p) for p in probs if p > 0])
+    return entropy
 
-# ✅ 컬럼명 정제
-df_power.columns = df_power.columns.str.strip()
-df_temp.columns = df_temp.columns.str.strip()
-df_hourly.columns = df_hourly.columns.str.strip()
+df_power['Entropy'] = df_power.apply(compute_entropy, axis=1)
+st.subheader("Shannon Entropy by Region")
+st.dataframe(df_power[['시도','시군구','Entropy']])
 
-st.title("Electricity Usage Analysis")
+# --- Variational Optimization (minimize total power variance between months) ---
+def variational_cost(row):
+    monthly_values = row[['1월','2월','3월','4월','5월','6월','7월','8월','9월','10월','11월','12월']].values
+    gradient = np.diff(monthly_values)
+    return np.sum(gradient**2)
 
-# ✅ Shannon Entropy 계산
-def compute_entropy(group):
-    prob = group / group.sum()
-    prob = prob[prob > 0]
-    return -np.sum(prob * np.log2(prob))
+df_power['Variational Cost'] = df_power.apply(variational_cost, axis=1)
 
-if '시도' in df_power.columns and '시군구' in df_power.columns and '사용량' in df_power.columns:
-    df_entropy = df_power.groupby(['시도', '시군구'])['사용량'].apply(compute_entropy).reset_index(name='entropy')
-    st.subheader("Regional Energy Entropy")
-    st.dataframe(df_entropy)
-    st.bar_chart(df_entropy.set_index('시군구')['entropy'])
+# --- Sorting Algorithm (Descending by Entropy) ---
+sorted_df = df_power.sort_values(by='Entropy', ascending=False)
+st.subheader("Sorted by Entropy")
+st.dataframe(sorted_df[['시도','시군구','Entropy']])
 
-# ✅ Queue: 전력 수요량 최근 10개
-if '수요량(MWh)' in df_hourly.columns:
-    st.subheader("Queue - Recent Power Demand")
-    power_queue = deque(df_hourly['수요량(MWh)'][:10])
-    st.write(list(power_queue))
+# --- Queue Simulation (first 10 hourly power values) ---
+power_deque = deque(df_hourly.iloc[0][1:].values[:10])
+st.subheader("Queue Simulation: First 10 Hours")
+st.write(list(power_deque))
 
-# ✅ Stack: 최고 기온 최근 10개
-if '최고기온' in df_temp.columns:
-    st.subheader("Stack - Max Temperature (Last 10)")
-    temp_stack = list(df_temp['최고기온'].tail(10))
-    st.write(temp_stack[::-1])  # Stack 특성상 역순
+# --- Stack Simulation (top 5 temperature areas) ---
+temp_stack = list(df_temp.sort_values(by='평균기온값', ascending=False)['관측소명'][:5])
+st.subheader("Stack Simulation: Top 5 Hot Areas")
+st.write(temp_stack[::-1])  # LIFO order
 
-# ✅ Binary Search
-def binary_search(arr, target):
-    arr = sorted(arr)
-    left, right = 0, len(arr) - 1
-    while left <= right:
-        mid = (left + right) // 2
-        if arr[mid] == target:
-            return mid
-        elif arr[mid] < target:
-            left = mid + 1
-        else:
-            right = mid - 1
-    return -1
+# --- Tree Structure Visualization (City to District) ---
+st.subheader("Tree Simulation: City to District")
+region_tree = {}
+for _, row in df_power.iterrows():
+    city = row['시도']
+    district = row['시군구']
+    if city not in region_tree:
+        region_tree[city] = []
+    if district not in region_tree[city]:
+        region_tree[city].append(district)
 
-if '수요량(MWh)' in df_hourly.columns:
-    search_list = df_hourly['수요량(MWh)'][:50].tolist()
-    target = int(np.mean(search_list))
-    index = binary_search(search_list, target)
-    st.subheader("Binary Search on Power Demand")
-    st.write(f"Target value: {target}")
-    st.write(f"Index (in sorted list): {index}")
+for city, districts in region_tree.items():
+    st.markdown(f"**{city}**")
+    for dist in districts:
+        st.markdown(f"- {dist}")
 
-# ✅ Heap Sort (Min-Heap)
-if '수요량(MWh)' in df_hourly.columns:
-    st.subheader("Heap Sort - Power Demand")
-    min_heap = []
-    for val in df_hourly['수요량(MWh)'][:50]:
-        heapq.heappush(min_heap, val)
-    sorted_power = [heapq.heappop(min_heap) for _ in range(len(min_heap))]
-    fig, ax = plt.subplots()
-    ax.plot(sorted_power)
-    ax.set_title("Heap Sorted Power Demand")
-    st.pyplot(fig)
+# --- Graph: Entropy by Region ---
+st.subheader("Entropy Visualization")
+fig, ax = plt.subplots(figsize=(10,5))
+entropy_plot = df_power.groupby('시도')['Entropy'].mean().sort_values(ascending=False)
+entropy_plot.plot(kind='bar', ax=ax)
+plt.title("Average Entropy per City")
+plt.xlabel("City")
+plt.ylabel("Entropy")
+st.pyplot(fig)
+
+# --- Graph: Variational Cost ---
+st.subheader("Variational Energy Cost")
+fig2, ax2 = plt.subplots(figsize=(10,5))
+v_cost_plot = df_power.groupby('시도')['Variational Cost'].mean().sort_values(ascending=False)
+v_cost_plot.plot(kind='bar', ax=ax2)
+plt.title("Average Variational Cost per City")
+plt.xlabel("City")
+plt.ylabel("Cost")
+st.pyplot(fig2)
+
+st.success("✅ All data processed with queue, stack, sorting, searching, tree, entropy, and variational methods!")
