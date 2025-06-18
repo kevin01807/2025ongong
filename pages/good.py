@@ -1,92 +1,92 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import plotly.express as px
 import os
+import plotly.express as px
+import matplotlib.pyplot as plt
+import networkx as nx
 from collections import deque
 from math import log2
-import networkx as nx
-import matplotlib.pyplot as plt
-from io import BytesIO
 
-# 경로 설정
-def get_path(filename):
-    return os.path.join(os.path.dirname(__file__), filename)
+# 파일 경로 함수
+BASE_DIR = os.path.dirname(__file__)
+def get_path(filename): return os.path.join(BASE_DIR, filename)
 
 # 데이터 불러오기
 @st.cache_data
 def load_data():
-    df_power = pd.read_csv(get_path("power_by_region.csv"))
-    df_temp = pd.read_csv(get_path("temperature_by_region.csv"))
-    df_hourly = pd.read_csv(get_path("hourly_power.csv"))
-    return df_power, df_temp, df_hourly
+    df_power = pd.read_csv(get_path("power_by_region.csv"))  # 시도, 시군구, 사용량(kWh)
+    df_temp = pd.read_csv(get_path("temperature_by_region.csv"))  # 시도, 평균기온값
+    df_hourly = pd.read_csv(get_path("hourly_power.csv"))  # 시간, 수요량(MWh)
+    df_sdg = pd.read_csv(get_path("7-1-1.csv"))  # Year, 거주지역별, Value
+    return df_power, df_temp, df_hourly, df_sdg
 
-df_power, df_temp, df_hourly = load_data()
+df_power, df_temp, df_hourly, df_sdg = load_data()
 
-# 1. 월별 사용량 평균 계산 후 샤논 엔트로피
-month_cols = [f"{i}월" for i in range(1, 13)]
-df_power["총사용량"] = df_power[month_cols].sum(axis=1)
-
+# 1. 샤논 엔트로피 계산
 def compute_entropy(group):
-    counts = group["총사용량"].value_counts()
-    prob = counts / counts.sum()
+    counts = group['사용량(kWh)'].value_counts()
+    total = counts.sum()
+    prob = counts / total
     return -np.sum([p * log2(p) for p in prob if p > 0])
 
-entropy_df = df_power.groupby(["시도", "시군구"]).apply(compute_entropy).reset_index(name="Entropy")
-st.subheader("Shannon Entropy by Region")
+entropy_df = df_power.groupby(['시도', '시군구']).apply(compute_entropy).reset_index(name='Entropy')
+st.subheader("1. Shannon Entropy by Region")
 st.dataframe(entropy_df)
 
-# 2. 평균기온 vs 전력 사용량 회귀
-power_avg = df_power.groupby("시도")["총사용량"].mean().reset_index(name="AvgUsage")
-temp_avg = df_temp.groupby("시도명")["평균기온값"].mean().reset_index()
-temp_avg.rename(columns={"시도명": "시도"}, inplace=True)
-df_merged = pd.merge(power_avg, temp_avg, on="시도")
-
-fig1 = px.scatter(df_merged, x="평균기온값", y="AvgUsage", trendline="ols", title="Regression: Temperature vs Power")
+# 2. 회귀 분석 (온도 vs 사용량)
+df_temp_power = df_power.groupby('시도')['사용량(kWh)'].mean().reset_index(name='AvgUsage')
+df_merged = pd.merge(df_temp_power, df_temp, on='시도')
+fig1 = px.scatter(df_merged, x='평균기온값', y='AvgUsage', trendline='ols',
+                  title='Regression: Temperature vs Power')
 st.plotly_chart(fig1)
 
-# 3. Queue & Stack 활용
-power_queue = deque(df_hourly.iloc[0, 1:25])
-power_stack = list(power_queue)
-power_stack.reverse()
+# 3. 자료구조: 큐/스택
+power_queue = deque(df_hourly['수요량(MWh)'][:10])
+power_stack = list(df_hourly['수요량(MWh)'][:10])
+st.subheader("2. Queue / Stack Structure (First 10 hours)")
+st.write("Queue:", list(power_queue))
+st.write("Stack:", power_stack)
 
-st.subheader("Power Queue (Morning to Night)")
-st.write(list(power_queue))
-st.subheader("Power Stack (Night to Morning)")
-st.write(power_stack)
-
-# 4. 트리 구조 - 배전 경로
-st.subheader("Power Distribution Tree")
-G = nx.DiGraph()
-regions = df_power[["시도", "시군구"]].drop_duplicates()
-for _, row in regions.iterrows():
-    G.add_edge("Korea", row["시도"])
-    G.add_edge(row["시도"], row["시군구"])
-
-fig, ax = plt.subplots(figsize=(10, 6))
-pos = nx.spring_layout(G, k=0.5)
-nx.draw(G, pos, with_labels=True, arrows=True, node_size=800, node_color="lightblue", font_size=10)
-st.pyplot(fig)
-
-# 5. 정렬 알고리즘 (버블 정렬 예시)
-def bubble_sort(data):
-    n = len(data)
+# 4. 탐색/정렬: 버블 정렬
+def bubble_sort(df, column):
+    data = df.copy()
+    arr = data.to_dict("records")
+    n = len(arr)
     for i in range(n):
-        for j in range(0, n - i - 1):
-            if data[j][1] < data[j + 1][1]:
-                data[j], data[j + 1] = data[j + 1], data[j]
-    return data
+        for j in range(0, n-i-1):
+            if arr[j][column] < arr[j+1][column]:
+                arr[j], arr[j+1] = arr[j+1], arr[j]
+    return pd.DataFrame(arr)
 
-sorted_usage = df_power.groupby("시도")["총사용량"].sum().reset_index()
-sorted_list = list(sorted_usage.to_records(index=False))
-sorted_result = bubble_sort(sorted_list.copy())
-st.subheader("Top Regions by Power Usage (Bubble Sort)")
-st.write(sorted_result)
+sorted_df = bubble_sort(df_power, "사용량(kWh)")
+st.subheader("3. Bubble Sort - Top Power Usage")
+st.dataframe(sorted_df.head(10))
 
-# 6. SDG 목표 데이터 시각화
-try:
-    df_sdg = pd.read_csv(get_path("7-1-1.csv"))
-    fig2 = px.bar(df_sdg, x="지역", y="보급률", title="SDG 7.1.1 Electrification Rate")
-    st.plotly_chart(fig2)
-except:
-    st.warning("SDG 7.1.1 CSV not found. Upload 7-1-1.csv in the same directory.")
+# 5. 트리 구조 시각화
+G = nx.DiGraph()
+for _, row in df_power.iterrows():
+    G.add_edge("Korea", row['시도'])
+    G.add_edge(row['시도'], row['시군구'])
+
+plt.figure(figsize=(10, 8))
+pos = nx.spring_layout(G, k=0.5)
+nx.draw(G, pos, with_labels=True, node_size=500, font_size=7, arrows=True)
+st.subheader("4. Power Distribution Tree (Region)")
+st.pyplot(plt)
+
+# 6. SDG 7-1-1 시각화
+fig2 = px.line(df_sdg.dropna(), x='Year', y='Value', color='거주지역별',
+               title="SDG 7.1.1: Access to Electricity by Region")
+st.subheader("5. SDG 7-1-1 Analysis")
+st.plotly_chart(fig2)
+
+# 7. 변분법 기반 최적화
+def variational_energy(y):
+    dy = np.gradient(y)
+    return np.sum(dy**2)
+
+energy_curve = df_hourly['수요량(MWh)'][:50].values
+energy_loss = variational_energy(energy_curve)
+st.subheader("6. Variational Principle - Energy Flow Cost")
+st.write(f"∫(dy/dt)^2 = {energy_loss:.2f}")
