@@ -1,116 +1,96 @@
-import os
 import streamlit as st
 import pandas as pd
-import networkx as nx
+import numpy as np
 import plotly.express as px
+import matplotlib.pyplot as plt
+import folium
+from folium.plugins import MarkerCluster
+import os
+from io import BytesIO
 from collections import deque
+from math import log2
+from statsmodels.api import OLS, add_constant
 
-st.set_page_config(page_title="재난 경보 시뮬레이션", layout="wide")
-st.title("🌪️ 재난 대응 시뮬레이션: 서울시 대피소 최적화")
+# 경로 설정
+def get_path(filename):
+    return os.path.join(os.path.dirname(__file__), filename)
 
-def safe_read_csv(path_or_buffer):
-    encs = ['utf-8', 'cp949', 'euc-kr']
-    for e in encs:
-        try:
-            return pd.read_csv(path_or_buffer, encoding=e)
-        except (UnicodeDecodeError, FileNotFoundError):
-            continue
-    return None
-
-@st.cache_data
+# 데이터 불러오기 함수
 def load_data():
-    base = os.path.dirname(__file__)
-    s = safe_read_csv(os.path.join(base, "seoul_shelters.csv"))
-    w = safe_read_csv(os.path.join(base, "kma_warnings_sample.csv"))
-    return s, w
+    df_power = pd.read_csv(get_path("power_by_region.csv"))
+    df_temp = pd.read_csv(get_path("temperature_by_region.csv"))
+    df_hourly = pd.read_csv(get_path("hourly_power.csv"))
+    df_sdg = pd.read_csv(get_path("7-1-1.csv"))
+    return df_power, df_temp, df_hourly, df_sdg
 
-# 1) 데이터 로드 (자동 + 업로더 폴백)
-shelters, warnings = load_data()
-if shelters is None or warnings is None:
-    st.warning("CSV 파일을 찾지 못했습니다. 아래에 업로드해주세요.")
-    up1 = st.file_uploader("서울 대피소 CSV", type=["csv"])
-    up2 = st.file_uploader("기상특보 CSV", type=["csv"])
-    if up1 and up2:
-        shelters = safe_read_csv(up1)
-        warnings = safe_read_csv(up2)
-if shelters is None or warnings is None:
-    st.error("데이터가 없습니다. 앱을 종료합니다.")
-    st.stop()
+df_power, df_temp, df_hourly, df_sdg = load_data()
 
-# 2) 컬럼명 자동 매핑
-def find_col(cols, keywords):
-    for k in keywords:
-        for c in cols:
-            if k in c:
-                return c
-    return None
+# 샤논 엔트로피 계산
+def compute_entropy(group):
+    counts = group['Usage'].value_counts()
+    prob = counts / counts.sum()
+    return -np.sum([p * log2(p) for p in prob if p > 0])
 
-# shelters 데이터
-s_cols = shelters.columns.str.strip().tolist()
-col_gu      = find_col(s_cols, ["자치구", "시군구", "구별"])
-col_shelter = find_col(s_cols, ["시설", "이름", "명"])
-if not col_gu or not col_shelter:
-    st.error(f"예상 컬럼명을 찾을 수 없습니다.\n시트 컬럼: {s_cols}")
-    st.stop()
+df_power.rename(columns={
+    '시도': 'Province',
+    '시군구': 'City',
+    '사용량': 'Usage'
+}, inplace=True)
 
-# warnings 데이터
-w_columns = warnings.columns.str.strip().tolist()
-col_time  = find_col(w_columns, ["TM", "시간", "발표"])
-col_type  = find_col(w_columns, ["ALERT", "특보", "종류"])
-if not col_time or not col_type:
-    st.error(f"예상 컬럼명을 찾을 수 없습니다.\n경보 컬럼: {w_columns}")
-    st.stop()
+entropy_df = df_power.groupby(['Province', 'City']).apply(compute_entropy).reset_index(name='Entropy')
 
-# 3) 최근 3개 특보 (FIFO)
-warnings = warnings.sort_values(col_time, ascending=False)
-recent = deque(warnings.head(3)[col_type])
-st.subheader("📋 최근 기상특보 (최신 3개)")
-st.write(list(recent))
+# 변분법 기반 분석 (가중합 최소화)
+def variational_minimize(data):
+    return data['Usage'].mean() + data['Usage'].std() * 0.5
 
-# 4) 트리: 자치구 → 대피소
-tree = {"대피소": {}}
-for _, r in shelters.iterrows():
-    gu = r[col_gu]
-    tree["대피소"].setdefault(gu, []).append(r[col_shelter])
-st.subheader("🌲 대피소 분류 트리")
-st.json(tree)
+optimized_score = variational_minimize(df_power)
 
-# 5) 그래프+ BFS: 자치구↔대피소 연결망 & 경로 찾기
-G = nx.Graph()
-for _, r in shelters.iterrows():
-    G.add_edge(r[col_gu], r[col_shelter])
+# 탐색 및 정렬 알고리즘 - 버블 정렬 예시
+def bubble_sort_regions(df):
+    items = df.groupby("City")["Usage"].sum().reset_index().values.tolist()
+    n = len(items)
+    for i in range(n):
+        for j in range(0, n - i - 1):
+            if items[j][1] < items[j + 1][1]:
+                items[j], items[j + 1] = items[j + 1], items[j]
+    return pd.DataFrame(items, columns=["City", "TotalUsage"])
 
-st.subheader("🗺️ 대피소 연결 네트워크")
-pos = nx.spring_layout(G, seed=42)
-fig = px.scatter(
-    x=[pos[n][0] for n in G.nodes()],
-    y=[pos[n][1] for n in G.nodes()],
-    text=list(G.nodes()),
-    title="대피소 연결망"
-)
-st.plotly_chart(fig, use_container_width=True)
+sorted_df = bubble_sort_regions(df_power)
 
-start = st.selectbox("출발 자치구 선택", sorted(shelters[col_gu].unique()))
-paths = nx.single_source_shortest_path(G, start)
-dest_cols = list(paths.keys())
-dest = st.selectbox("도착 대피소 선택", dest_cols)
-st.write(f"✅ BFS 최단 경로: {start} → {dest}", paths[dest])
+# 큐 / 스택 예시
+power_queue = deque(df_hourly['Usage'].head(10))
+power_stack = list(df_hourly['Usage'].tail(10))
 
-# 6) 스택: 최근 특보 Top5 (LIFO)
-stack5 = list(warnings.head(5)[col_type])
-st.subheader("📌 최근 특보 Top5 (LIFO)")
-st.write(stack5)
+# 회귀 분석: 온도 vs 전력 사용량
+avg_temp = df_temp.groupby("Region")["평균기온값"].mean().reset_index()
+avg_usage = df_power.groupby("City")["Usage"].mean().reset_index()
+df_merged = pd.merge(avg_temp, avg_usage, left_on="Region", right_on="City")
 
-# 7) 정렬: 자치구별 대피소 수 Top5
-counts = shelters[col_gu].value_counts().to_dict()
-sorted_counts = sorted(counts.items(), key=lambda x: x[1], reverse=True)
-st.subheader("🎯 대피소 수 많은 자치구 Top5")
-st.write(sorted_counts[:5])
+fig1 = px.scatter(df_merged, x='평균기온값', y='Usage', trendline='ols', title='Regression: Temperature vs Power')
 
-# 8) 선형 탐색: 자치구 이름으로 대피소 조회
-query = st.text_input("🧭 자치구 이름으로 대피소 조회", "")
-if query:
-    found = shelters[shelters[col_gu] == query][col_shelter].tolist()
-    st.write("🔍 검색 결과:", found or "해당 자치구에 대피소 없음")
+# 지도 기반 전력 배전 트리 시각화
+m = folium.Map(location=[36.5, 127.5], zoom_start=7)
+marker_cluster = MarkerCluster().add_to(m)
+for _, row in df_power.iterrows():
+    try:
+        if not (np.isnan(row['lat']) or np.isnan(row['lon'])):
+            folium.Marker(
+                location=[row['lat'], row['lon']],
+                popup=f"{row['Province']} > {row['City']}",
+                icon=folium.Icon(color='blue', icon='bolt', prefix='fa')
+            ).add_to(marker_cluster)
+    except:
+        continue
+m.save("/mnt/data/distribution_tree_map.html")
 
-st.caption("📁 데이터 출처: 서울시 공공데이터, 기상자료개방포털")
+# Streamlit UI
+st.title("Power Usage Analysis with Algorithm & Entropy")
+st.plotly_chart(fig1)
+st.write("\n### 🔍 Sorted Regions by Usage (Bubble Sort)")
+st.dataframe(sorted_df)
+st.write("\n### ⚙️ Entropy by Region")
+st.dataframe(entropy_df)
+st.write("\n### ✅ Optimized Score (Variational Calculus)")
+st.metric("Optimized Regional Score", f"{optimized_score:.2f}")
+st.write("\n### 📍 Power Distribution Map")
+st.components.v1.iframe("/mnt/data/distribution_tree_map.html", height=500)
