@@ -12,7 +12,7 @@ import os
 # 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
 
-# 유니코드 정리 함수 (surrogate 방지)
+# 유니코드 오류 방지용 텍스트 정리 함수
 def clean_unicode(text):
     return ''.join(c for c in str(text) if c.isprintable() and (ord(c) < 55296 or ord(c) > 57343))
 
@@ -25,14 +25,14 @@ st.set_page_config(page_title=clean_unicode("ICT 역량 분류 및 격차 분석
 def load_data():
     base_dir = os.getcwd()
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    st.write(clean_unicode("📂 데이터 경로 확인:"), file_path)
+    st.write("데이터 경로 확인:", file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
 
     df.rename(columns={
-        '기술유형': 'Skill_Type',
-        '성별': 'Gender',
         'Year': '연도',
-        'Value': '값'
+        'Value': '값',
+        '기술유형': 'Skill_Type',
+        '성별': 'Gender'
     }, inplace=True)
 
     skill_map = {
@@ -53,23 +53,24 @@ def load_data():
 df = load_data()
 
 # ----------------------
-# 2. 기술별 시각화
+# 2. 시각화
 # ----------------------
-st.title(clean_unicode("ICT 역량 분류 및 격차 분석"))
 st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 
 selected_skill = st.selectbox("기술을 선택하세요", df['Skill_KR'].dropna().unique())
-
 filtered = df[df['Skill_KR'] == selected_skill]
 filtered = filtered.dropna(subset=['연도', '값', 'Gender'])
 
 if filtered.empty:
-    st.warning("선택한 기술에 해당하는 유효한 데이터가 없습니다.")
+    st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
 else:
     fig, ax = plt.subplots(figsize=(10, 6))
-    sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
-    ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
-    st.pyplot(fig)
+    try:
+        sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
+        ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
+        st.pyplot(fig)
+    except ValueError as e:
+        st.error(f"시각화 중 오류 발생: {e}")
 
 # ----------------------
 # 3. 나이브 베이즈 분류기 적용
@@ -79,7 +80,6 @@ st.subheader(clean_unicode("나이브 베이즈 분류기를 활용한 예측"))
 numeric_df = df[['연도', '값']].copy()
 numeric_df['성별'] = df['Gender']
 numeric_df['기술'] = df['Skill_KR']
-
 numeric_df['성별코드'] = numeric_df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
 numeric_df['기술코드'] = numeric_df['기술'].astype('category').cat.codes
 
