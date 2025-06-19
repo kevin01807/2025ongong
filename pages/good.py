@@ -39,7 +39,6 @@ else:
 
 # 5. 큐 시뮬레이션
 st.header("ICT 접근 대기열 시뮬레이션 (Queue)")
-
 try:
     queue_items = queue_df["Skill"].dropna().tolist()
     q = deque(queue_items)
@@ -56,7 +55,6 @@ except Exception as e:
 
 # 6. 스택 시뮬레이션
 st.header("ICT 학습 이력 시뮬레이션 (Stack)")
-
 try:
     stack_items = stack_df["Skill"].dropna().tolist()
     s = list(stack_items)
@@ -73,7 +71,6 @@ except Exception as e:
 
 # 7. 기술 우선순위 정렬 (Value 기준)
 st.header("ICT 기술 우선순위 정렬")
-
 try:
     sort_data = df[df["성별"] == "전체"].groupby("기술유형")["Value"].mean().reset_index()
     sorted_df = sort_data.sort_values(by="Value", ascending=False)
