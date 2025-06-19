@@ -12,11 +12,11 @@ import os
 # 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
 
-st.set_page_config(page_title="ICT 역량 분류 및 격차 분석", layout="wide")
-
-# 유니코드 정리 함수
+# 유니코드 정리 함수 (surrogate 방지)
 def clean_unicode(text):
-    return ''.join(c for c in text if c.isprintable() and ord(c) < 55296 or ord(c) > 57343)
+    return ''.join(c for c in str(text) if c.isprintable() and (ord(c) < 55296 or ord(c) > 57343))
+
+st.set_page_config(page_title=clean_unicode("ICT 역량 분류 및 격차 분석"), layout="wide")
 
 # ----------------------
 # 1. 데이터 불러오기 및 전처리
@@ -25,10 +25,9 @@ def clean_unicode(text):
 def load_data():
     base_dir = os.getcwd()
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    st.write("데이터 경로 확인:", file_path)
+    st.write(clean_unicode("📂 데이터 경로 확인:"), file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
 
-    # 컬럼명 정리
     df.rename(columns={
         '기술유형': 'Skill_Type',
         '성별': 'Gender',
@@ -36,7 +35,6 @@ def load_data():
         'Value': '값'
     }, inplace=True)
 
-    # 기술코드 매핑
     skill_map = {
         'ARSP': '문서 편집',
         'EMAIL': '이메일 사용',
@@ -52,24 +50,21 @@ def load_data():
     df['Gender'] = df['Gender'].fillna('전체')
     return df
 
-# ----------------------
-# 2. Streamlit 인터페이스
-# ----------------------
 df = load_data()
 
+# ----------------------
+# 2. 기술별 시각화
+# ----------------------
 st.title(clean_unicode("ICT 역량 분류 및 격차 분석"))
 st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 
-# 기술 유형 선택
 selected_skill = st.selectbox("기술을 선택하세요", df['Skill_KR'].dropna().unique())
 
-# 선택한 기술 필터링
 filtered = df[df['Skill_KR'] == selected_skill]
 filtered = filtered.dropna(subset=['연도', '값', 'Gender'])
 
-# 시각화
 if filtered.empty:
-    st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
+    st.warning("선택한 기술에 해당하는 유효한 데이터가 없습니다.")
 else:
     fig, ax = plt.subplots(figsize=(10, 6))
     sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
@@ -85,12 +80,11 @@ numeric_df = df[['연도', '값']].copy()
 numeric_df['성별'] = df['Gender']
 numeric_df['기술'] = df['Skill_KR']
 
-# Label Encoding
 numeric_df['성별코드'] = numeric_df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
 numeric_df['기술코드'] = numeric_df['기술'].astype('category').cat.codes
 
 X = numeric_df[['연도', '성별코드', '기술코드']]
-y = numeric_df['값'] > numeric_df['값'].mean()  # 평균 초과 여부
+y = numeric_df['값'] > numeric_df['값'].mean()
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
@@ -129,7 +123,7 @@ with tab2:
     st.write("현재 스택 상태:", stack)
 
 # ----------------------
-# 5. 간단한 정렬 알고리즘 시각화
+# 5. 정렬 알고리즘 시각화
 # ----------------------
 st.subheader(clean_unicode("정렬 알고리즘 시각화"))
 
@@ -140,14 +134,12 @@ if st.button("정렬 시작"):
         nums = [int(x) for x in sort_data.split(',')]
         st.write("원본 배열:", nums)
 
-        # 버블 정렬 구현
         for i in range(len(nums)):
             for j in range(len(nums) - i - 1):
                 if nums[j] > nums[j+1]:
                     nums[j], nums[j+1] = nums[j+1], nums[j]
         st.write("정렬된 배열:", nums)
 
-        # 시각화
         fig2, ax2 = plt.subplots()
         ax2.bar(range(len(nums)), nums)
         ax2.set_title("정렬 결과 시각화")
