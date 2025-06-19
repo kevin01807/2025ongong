@@ -1,80 +1,91 @@
 import streamlit as st
 import pandas as pd
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
-import os
-from collections import deque
+from sklearn.model_selection import train_test_split
+from sklearn.naive_bayes import GaussianNB
+from sklearn.preprocessing import LabelEncoder
+from sklearn.impute import SimpleImputer
 
-# 1. 기본 설정
-st.title("ICT 역량 분류 및 격차 분석")
+# Set base directory for data files
 base_dir = "/mnt/data"
-main_data_path = os.path.join(base_dir, "4-4-1.csv")
-queue_path = os.path.join(base_dir, "queue_data.csv")
-stack_path = os.path.join(base_dir, "stack_data.csv")
 
-# 2. 데이터 불러오기
-df = pd.read_csv(main_data_path)
-queue_df = pd.read_csv(queue_path)
-stack_df = pd.read_csv(stack_path)
+# ---------- 1. ICT 활용 격차 시각화 ----------
+st.title("ICT 역량 분류 및 격차 분석")
 
-st.write(f"데이터 경로 확인: {main_data_path}")
+ict_file = os.path.join(base_dir, "4-4-1.csv")
+st.text(f"데이터 경로 확인: {ict_file}")
 
-# 3. 기술 유형 선택
+df = pd.read_csv(ict_file)
+
 st.header("기술 유형별 ICT 활용 격차")
-skill_types = df["기술유형"].unique().tolist()
-selected_skill = st.selectbox("기술을 선택하세요", skill_types)
+skills = df["기술유형"].unique()
+selected_skill = st.selectbox("기술을 선택하세요", skills)
 
-# 4. 필터링 및 시각화
 filtered = df[df["기술유형"] == selected_skill]
+
 if filtered.empty:
     st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
 else:
-    fig, ax = plt.subplots(figsize=(10, 5))
+    fig, ax = plt.subplots()
     try:
         sns.barplot(data=filtered, x="Year", y="Value", hue="성별", ax=ax)
         ax.set_title(f"{selected_skill} 기술 활용도 (성별 비교)")
         st.pyplot(fig)
-    except ValueError as e:
+    except Exception as e:
         st.error(f"시각화 중 오류 발생: {e}")
 
-# 5. 큐 시뮬레이션
-st.header("ICT 접근 대기열 시뮬레이션 (Queue)")
+# ---------- 2. 나이브 베이즈 분류 ----------
+st.header("ICT 기술 활용도 예측 (나이브 베이즈)")
+
 try:
-    queue_items = queue_df["Skill"].dropna().tolist()
-    q = deque(queue_items)
-    st.markdown(f"**초기 대기열:** {list(q)}")
-    if st.button("ICT 기술 1건 처리 (Dequeue)"):
-        if q:
-            removed = q.popleft()
-            st.success(f"처리 완료: {removed}")
-        else:
-            st.warning("대기열이 비어 있습니다.")
-    st.markdown(f"**현재 대기열:** {list(q)}")
+    features = df[["Year", "기술유형", "성별"]]
+    target = df["Value"]
+
+    # 인코딩
+    le1 = LabelEncoder()
+    le2 = LabelEncoder()
+    features["기술유형"] = le1.fit_transform(features["기술유형"])
+    features["성별"] = le2.fit_transform(features["성별"])
+
+    # 결측치 처리
+    imputer = SimpleImputer(strategy="mean")
+    X = imputer.fit_transform(features)
+    y = target
+
+    # 분류기 학습
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
+    if X_train.shape[0] == 0:
+        st.warning("학습에 사용할 데이터가 부족합니다. 데이터를 확인하세요.")
+    else:
+        model = GaussianNB()
+        model.fit(X_train, y_train)
+        score = model.score(X_test, y_test)
+        st.success(f"모델 정확도: {score:.2f}")
+except Exception as e:
+    st.error(f"나이브 베이즈 실행 중 오류 발생: {e}")
+
+# ---------- 3. 큐 처리 ----------
+st.header("ICT 업무 우선순위 큐 정렬")
+
+try:
+    queue_file = os.path.join(base_dir, "queue_data.csv")
+    queue_df = pd.read_csv(queue_file)
+    queue_sorted = queue_df.sort_values(by="Priority")
+    st.subheader("우선순위 큐 (낮은 숫자일수록 우선순위 높음)")
+    st.dataframe(queue_sorted)
 except Exception as e:
     st.error(f"큐 처리 중 오류 발생: {e}")
 
-# 6. 스택 시뮬레이션
-st.header("ICT 학습 이력 시뮬레이션 (Stack)")
+# ---------- 4. 스택 처리 ----------
+st.header("ICT 작업 중요도 스택 정렬")
+
 try:
-    stack_items = stack_df["Skill"].dropna().tolist()
-    s = list(stack_items)
-    st.markdown(f"**초기 학습 이력:** {s}")
-    if st.button("최근 학습 기술 제거 (Pop)"):
-        if s:
-            popped = s.pop()
-            st.success(f"제거된 기술: {popped}")
-        else:
-            st.warning("스택이 비어 있습니다.")
-    st.markdown(f"**현재 학습 이력:** {s}")
+    stack_file = os.path.join(base_dir, "stack_data.csv")
+    stack_df = pd.read_csv(stack_file)
+    stack_sorted = stack_df.sort_values(by="Importance", ascending=False)
+    st.subheader("중요도 스택 (높은 숫자일수록 더 먼저)")
+    st.dataframe(stack_sorted)
 except Exception as e:
     st.error(f"스택 처리 중 오류 발생: {e}")
-
-# 7. 기술 우선순위 정렬 (Value 기준)
-st.header("ICT 기술 우선순위 정렬")
-try:
-    sort_data = df[df["성별"] == "전체"].groupby("기술유형")["Value"].mean().reset_index()
-    sorted_df = sort_data.sort_values(by="Value", ascending=False)
-    st.dataframe(sorted_df)
-    st.markdown("※ Value 기준 평균 ICT 활용도가 높은 순으로 기술을 정렬한 결과입니다.")
-except Exception as e:
-    st.error(f"정렬 중 오류 발생: {e}")
