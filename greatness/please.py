@@ -33,7 +33,7 @@ def load_data():
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
     st.write(clean_unicode("데이터 경로 확인:"), file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
-    df.rename(columns={'기술유형': 'Skill_Type', '성별': 'Gender'}, inplace=True)
+    df.rename(columns={'기술유형': 'Skill_Type', '성별': 'Gender', 'Year': '연도', 'Value': '값'}, inplace=True)
 
     skill_map = {
         'ARSP': '문서 편집',
@@ -67,11 +67,15 @@ st.dataframe(df.head())
 st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 selected_skill = st.selectbox("기술을 선택하세요", df['Skill_KR'].unique())
 filtered = df[df['Skill_KR'] == selected_skill]
+filtered = filtered.dropna(subset=['연도', '값', 'Gender'])
 
-fig, ax = plt.subplots(figsize=(10, 6))
-sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
-ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
-st.pyplot(fig)
+if filtered.empty:
+    st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
+else:
+    fig, ax = plt.subplots(figsize=(10, 6))
+    sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
+    ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
+    st.pyplot(fig)
 
 # ----------------------
 # 4. 나이브 베이즈 분류기 적용
@@ -147,3 +151,4 @@ if st.button("정렬 시작"):
         st.pyplot(fig2)
     except:
         st.warning("숫자를 올바르게 입력해주세요!")
+
