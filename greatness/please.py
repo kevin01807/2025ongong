@@ -41,16 +41,13 @@ def load_data():
     df['Gender'] = df['Gender'].fillna('전체')
     return df
 
-# 이하 동일...
-
-
 df = load_data()
 
 # ----------------------
 # 2. 데이터 시각화
 # ----------------------
 
-st.title("📊 ICT 역량 데이터 시각화 및 분류 시스템")
+st.title("ICT 역량 데이터 시각화 및 분류 시스템")
 st.markdown("SDGs 4.4.1 - ICT 기술 역량 보유자 비율 시계열 및 분류 예측")
 
 selected_skill = st.selectbox("기술 유형 선택", sorted(df['Skill_KR'].unique()))
@@ -92,7 +89,7 @@ model.fit(X_train, y_train)
 # 4. 사용자 입력 - 예측
 # ----------------------
 
-st.header("🧠 ICT 역량 보유 예측 (나이브 베이즈)")
+st.header("ICT 역량 보유 예측 (나이브 베이즈)")
 age = st.slider("나이", 10, 70, 25)
 gender = st.radio("성별", ['남성', '여성'])
 edu = st.selectbox("교육 수준", ['중졸 이하', '고졸', '대졸 이상'])
@@ -100,14 +97,14 @@ hour = st.slider("하루 인터넷 이용 시간", 0, 10, 2)
 
 input_df = pd.DataFrame([[age, gender_map[gender], edu_map[edu], hour]], columns=X.columns)
 prediction = model.predict(input_df)[0]
-result_text = "✅ ICT 역량 **보유**로 예측됩니다." if prediction else "❌ ICT 역량 **미보유**로 예측됩니다."
+result_text = "✅ ICT 역량 보유로 예측됩니다." if prediction else "❌ ICT 역량 미보유로 예측됩니다."
 st.subheader(result_text)
 
 # ----------------------
 # 5. 자료구조 시뮬레이션 (큐 / 스택)
 # ----------------------
 
-st.header("🧩 자료구조 시뮬레이션")
+st.header("자료구조 시뮬레이션")
 
 st.subheader("큐 구조 (대기열 시뮬레이션)")
 queue = deque(["사용자1", "사용자2", "사용자3"])
@@ -133,7 +130,7 @@ if st.button("최근 결과 보기 (pop)"):
 # 6. 정렬 알고리즘 시각화
 # ----------------------
 
-st.header("📈 지역별 ICT 기술 보유율 정렬 예시")
+st.header("지역별 ICT 기술 보유율 정렬 예시")
 region_data = pd.DataFrame({
     'Region': [f"지역{i}" for i in range(1, 11)],
     'ICT_Rate': np.random.uniform(40, 90, 10).round(2)
