@@ -17,15 +17,27 @@ def clean_unicode(text):
 
 st.set_page_config(page_title=clean_unicode("ICT 역량 분류 및 격차 분석"), layout="wide")
 
+# -------------------
+# 데이터 불러오기 함수
+# -------------------
 @st.cache_data
 def load_data():
     base_dir = os.getcwd()
-    file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    df = pd.read_csv(file_path, encoding="utf-8")
-    return df
+    main_file = os.path.join(base_dir, "data", "4-4-1.csv")
+    queue_file = os.path.join(base_dir, "data", "queue_data.csv")
+    stack_file = os.path.join(base_dir, "data", "stack_data.csv")
 
-df = load_data()
+    df = pd.read_csv(main_file, encoding="utf-8")
+    queue_df = pd.read_csv(queue_file, encoding="utf-8")
+    stack_df = pd.read_csv(stack_file, encoding="utf-8")
 
+    return df, queue_df, stack_df
+
+df, queue_df, stack_df = load_data()
+
+# -------------------
+# 1. ICT 기술 시각화
+# -------------------
 st.title(clean_unicode("ICT 역량 분류 및 격차 분석"))
 st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 
@@ -44,57 +56,50 @@ if '기술유형' in df.columns and '성별' in df.columns and 'Year' in df.colu
 else:
     st.error("데이터셋에 필요한 컬럼이 없습니다.")
 
-# ----------- 나이브 베이즈 분류기 ----------
+# -------------------
+# 2. 나이브 베이즈 분류기
+# -------------------
 st.subheader("나이브 베이즈 분류기를 활용한 예측")
-numeric_df = df[['Year', 'Value']].copy()
-numeric_df['Gender'] = df['성별']
-numeric_df['Skill'] = df['기술유형']
 
-numeric_df['Gender_Code'] = numeric_df['Gender'].map({'남자': 0, '여자': 1, '전체': 2})
-numeric_df['Skill_Code'] = numeric_df['Skill'].astype('category').cat.codes
+combined_df = pd.concat([queue_df, stack_df], ignore_index=True)
+if all(col in combined_df.columns for col in ['Year', 'Value', 'Type']):
+    combined_df['Type_Code'] = combined_df['Type'].astype('category').cat.codes
+    combined_df = combined_df.dropna(subset=['Year', 'Value', 'Type_Code'])
 
-numeric_df = numeric_df.dropna(subset=['Year', 'Value', 'Gender_Code', 'Skill_Code'])
+    X = combined_df[['Year', 'Type_Code']]
+    y = combined_df['Value'] > combined_df['Value'].mean()
 
-X = numeric_df[['Year', 'Gender_Code', 'Skill_Code']]
-y = numeric_df['Value'] > numeric_df['Value'].mean()
-
-if len(X) < 2:
-    st.warning("📉 학습에 사용할 데이터가 부족합니다.")
+    if len(X) < 2:
+        st.warning("📉 학습에 사용할 데이터가 부족합니다.")
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+        model = GaussianNB()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        st.text("📌 분류 보고서")
+        st.text(classification_report(y_test, y_pred))
 else:
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
-    model = GaussianNB()
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
-    st.text("📌 분류 보고서")
-    st.text(classification_report(y_test, y_pred))
+    st.error("큐/스택 데이터셋에 필요한 컬럼이 없습니다.")
 
-# ----------- 큐와 스택 시뮬레이션 ----------
+# -------------------
+# 3. 큐/스택 시뮬레이션
+# -------------------
 st.subheader("자료구조 시뮬레이션: 큐와 스택")
 st.markdown("#### 📥 ICT 요청 처리 구조: Queue(선착순) vs Stack(긴급처리)")
 
 tab1, tab2 = st.tabs(["📥 큐 (Queue)", "📦 스택 (Stack)"])
 
 with tab1:
-    queue = deque()
-    q_input = st.text_input("큐에 추가할 항목 입력", key="queue_input")
-    if st.button("큐에 추가"):
-        queue.append(q_input)
-    if st.button("큐에서 제거"):
-        if queue:
-            queue.popleft()
-    st.write("현재 큐 상태:", list(queue))
+    st.dataframe(queue_df)
+    st.write("큐 시뮬레이션: 기술 요청이 먼저 도착한 순서대로 처리됩니다.")
 
 with tab2:
-    stack = []
-    s_input = st.text_input("스택에 추가할 항목 입력", key="stack_input")
-    if st.button("스택에 추가"):
-        stack.append(s_input)
-    if st.button("스택에서 제거"):
-        if stack:
-            stack.pop()
-    st.write("현재 스택 상태:", stack)
+    st.dataframe(stack_df)
+    st.write("스택 시뮬레이션: 가장 최근 요청이 우선 처리됩니다.")
 
-# ----------- 정렬 알고리즘 시각화 ----------
+# -------------------
+# 4. 정렬 알고리즘 시각화
+# -------------------
 st.subheader("정렬 알고리즘 시각화")
 st.markdown("#### 🔢 ICT 기술 우선순위 정렬")
 
