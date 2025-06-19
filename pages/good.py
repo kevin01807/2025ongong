@@ -60,17 +60,22 @@ else:
 st.subheader("나이브 베이즈 분류기를 활용한 예측")
 
 try:
-    numeric_df = df[['Year', 'Value', '성별', '기술유형']].dropna()
+    numeric_df = df[['Year', 'Value', '성별', '기술유형']].copy()
     numeric_df['Gender_Code'] = numeric_df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
     numeric_df['Skill_Code'] = numeric_df['기술유형'].astype('category').cat.codes
 
+    from sklearn.impute import SimpleImputer
+    imputer = SimpleImputer(strategy='mean')
+
     X = numeric_df[['Year', 'Gender_Code', 'Skill_Code']]
+    X_imputed = imputer.fit_transform(X)
+
     y = numeric_df['Value'] > numeric_df['Value'].mean()
 
-    if len(X) < 10:
-        st.warning(f"📉 학습에 사용할 데이터가 부족합니다 (샘플 수: {len(X)}개). 다른 기술을 선택하거나 전체 데이터를 활용해 보세요.")
+    if len(X_imputed) < 10:
+        st.warning("📉 학습에 사용할 데이터가 부족합니다.")
     else:
-        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+        X_train, X_test, y_train, y_test = train_test_split(X_imputed, y, random_state=42)
         model = GaussianNB()
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
@@ -79,6 +84,7 @@ try:
 
 except Exception as e:
     st.error(f"나이브 베이즈 실행 중 오류 발생: {e}")
+
 
 
 
