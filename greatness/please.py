@@ -12,7 +12,7 @@ import os
 # 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
 
-# 유니코드 오류 방지 함수
+# 유니코드 정리 함수
 def clean_unicode(text):
     return ''.join(c for c in str(text) if c.isprintable() and (ord(c) < 55296 or ord(c) > 57343))
 
@@ -22,20 +22,21 @@ st.set_page_config(page_title=clean_unicode("ICT 역량 분류 및 격차 분석
 # 1. 데이터 불러오기 및 전처리
 # ----------------------
 @st.cache_data
-
 def load_data():
     base_dir = os.getcwd()
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    st.write("데이터 경로 확인:", file_path)
+    st.write("📂 데이터 경로 확인:", file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
 
+    # 컬럼명 정리
     df.rename(columns={
-        'Year': '연도',
         '기술유형': 'Skill_Type',
         '성별': 'Gender',
-        'Value': '값'
+        'Year': 'Year',
+        'Value': 'Value'
     }, inplace=True)
 
+    # 기술코드 매핑
     skill_map = {
         'ARSP': '문서 편집',
         'EMAIL': '이메일 사용',
@@ -59,42 +60,47 @@ df = load_data()
 st.title(clean_unicode("ICT 역량 분류 및 격차 분석"))
 st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 
+# 기술 유형 선택
 selected_skill = st.selectbox("기술을 선택하세요", df['Skill_KR'].dropna().unique())
-filtered = df[df['Skill_KR'] == selected_skill].dropna(subset=['연도', '값', 'Gender'])
 
-# 오류 방지 및 시각화
+# 선택한 기술 필터링
+filtered = df[df['Skill_KR'] == selected_skill].copy()
+
+# 시각화
 if filtered.empty:
-    st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
+    st.warning("선택한 기술에 해당하는 유효한 데이터가 없습니다.")
 else:
     try:
         fig, ax = plt.subplots(figsize=(10, 6))
-        sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
+        sns.barplot(data=filtered, x='Year', y='Value', hue='Gender', ax=ax)
         ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
         st.pyplot(fig)
-    except ValueError as e:
-        st.error(f"시각화 오류 발생: {e}")
+    except Exception as e:
+        st.error("📉 시각화 오류 발생: " + str(e))
 
 # ----------------------
 # 3. 나이브 베이즈 분류기 적용
 # ----------------------
 st.subheader(clean_unicode("나이브 베이즈 분류기를 활용한 예측"))
 
-numeric_df = df[['연도', '값']].copy()
+numeric_df = df[['Year', 'Value']].copy()
 numeric_df['성별'] = df['Gender']
 numeric_df['기술'] = df['Skill_KR']
 
-numeric_df['성별코드'] = numeric_df['성별'].map({'남성': 0, '여성': 1, '전체': 2})
+# Label Encoding
+numeric_df['성별코드'] = numeric_df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
 numeric_df['기술코드'] = numeric_df['기술'].astype('category').cat.codes
 
-X = numeric_df[['연도', '성별코드', '기술코드']]
-y = numeric_df['값'] > numeric_df['값'].mean()
+X = numeric_df[['Year', '성별코드', '기술코드']]
+y = numeric_df['Value'] > numeric_df['Value'].mean()
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+
 model = GaussianNB()
 model.fit(X_train, y_train)
 y_pred = model.predict(X_test)
 
-st.text(clean_unicode("\n📌 분류 보고서"))
+st.text("📌 분류 보고서")
 st.text(clean_unicode(classification_report(y_test, y_pred)))
 
 # ----------------------
@@ -140,8 +146,8 @@ if st.button("정렬 시작"):
             for j in range(len(nums) - i - 1):
                 if nums[j] > nums[j+1]:
                     nums[j], nums[j+1] = nums[j+1], nums[j]
-
         st.write("정렬된 배열:", nums)
+
         fig2, ax2 = plt.subplots()
         ax2.bar(range(len(nums)), nums)
         ax2.set_title("정렬 결과 시각화")
