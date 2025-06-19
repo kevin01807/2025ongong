@@ -56,26 +56,29 @@ if '기술유형' in df.columns and '성별' in df.columns and 'Year' in df.colu
 else:
     st.error("데이터셋에 필요한 컬럼이 없습니다.")
 
-# 2. 나이브 베이즈 분류기
+# 3. 나이브 베이즈 분류기
+# ----------------------
 st.subheader("나이브 베이즈 분류기를 활용한 예측")
 try:
-    model_df = df[['Year', 'Value', 'Gender', 'Skill_KR']].copy()
-    model_df['성별코드'] = model_df['Gender'].map({'남자': 0, '여자': 1, '전체': 2})
-    model_df['기술코드'] = model_df['Skill_KR'].astype('category').cat.codes
-    model_df.dropna(inplace=True)
+    numeric_df = df[['Year', 'Value']].copy()
+    numeric_df['Gender'] = df['Gender']
+    numeric_df['Skill'] = df['Skill_KR']
 
-    X = model_df[['Year', '성별코드', '기술코드']]
-    y = model_df['Value'] > model_df['Value'].mean()
+    numeric_df['Gender_Code'] = numeric_df['Gender'].map({'남자': 0, '여자': 1, '전체': 2})
+    numeric_df['Skill_Code'] = numeric_df['Skill'].astype('category').cat.codes
+    numeric_df.dropna(inplace=True)
 
-    if len(X) == 0:
-        st.error("📉 데이터가 부족합니다. 다른 조건을 선택하거나 전체 데이터를 확인하세요.")
-    else:
+    X = numeric_df[['Year', 'Gender_Code', 'Skill_Code']]
+    y = numeric_df['Value'] > numeric_df['Value'].mean()
+
+    if len(X) > 0:
         X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
         model = GaussianNB()
         model.fit(X_train, y_train)
         y_pred = model.predict(X_test)
-        st.text("📌 분류 보고서")
-        st.text(clean_unicode(classification_report(y_test, y_pred)))
+        st.text(classification_report(y_test, y_pred))
+    else:
+        st.warning("데이터가 부족합니다. 다른 기술을 선택해보세요.")
 except Exception as e:
     st.error(f"나이브 베이즈 실행 중 오류 발생: {e}")
 # -------------------
