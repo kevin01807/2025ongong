@@ -12,17 +12,20 @@ import os
 # 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
 
-st.set_page_config(page_title="ICT 역량 분류 및 격차 분석", layout="wide")
+# 유니코드 오류 방지용 텍스트 정리 함수
+def clean_unicode(text):
+    return ''.join(c for c in str(text) if c.isprintable())
+
+st.set_page_config(page_title=clean_unicode("ICT 역량 분류 및 격차 분석"), layout="wide")
 
 # ----------------------
 # 1. 데이터 불러오기 및 전처리
 # ----------------------
-
 @st.cache_data
 def load_data():
     base_dir = os.getcwd()
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    st.text("데이터 경로 확인: " + file_path)
+    st.write(clean_unicode("📂 데이터 경로 확인:"), file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
     df.rename(columns={'기술유형': 'Skill_Type', '성별': 'Gender'}, inplace=True)
 
@@ -44,114 +47,93 @@ def load_data():
 df = load_data()
 
 # ----------------------
-# 2. 데이터 시각화
+# 2. 시각화
 # ----------------------
+st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 
-st.title("ICT 역량 데이터 시각화 및 분류 시스템")
-st.markdown("SDGs 4.4.1 - ICT 기술 역량 보유자 비율 시계열 및 분류 예측")
+selected_skill = st.selectbox("기술을 선택하세요", df['Skill_KR'].unique())
+filtered = df[df['Skill_KR'] == selected_skill]
 
-selected_skill = st.selectbox("기술 유형 선택", sorted(df['Skill_KR'].unique()))
-filtered_df = df[df['Skill_KR'] == selected_skill]
-
-fig, ax = plt.subplots(figsize=(10, 5))
-sns.lineplot(data=filtered_df, x='Year', y='Value', hue='Gender', marker='o', ax=ax)
-plt.title(f"{selected_skill} 비율 변화 (연도별, 성별)")
-plt.ylabel("비율 (%)")
+fig, ax = plt.subplots(figsize=(10, 6))
+sns.barplot(data=filtered, x='연도', y='값', hue='Gender', ax=ax)
+ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
 st.pyplot(fig)
 
 # ----------------------
-# 3. 나이브 베이즈 분류기 학습
+# 3. 나이브 베이즈 분류기 적용
 # ----------------------
+st.subheader(clean_unicode("나이브 베이즈 분류기를 활용한 예측"))
 
-np.random.seed(42)
-sample_data = pd.DataFrame({
-    'Age': np.random.randint(10, 70, 200),
-    'Gender': np.random.choice(['남성', '여성'], 200),
-    'Edu_Level': np.random.choice(['중졸 이하', '고졸', '대졸 이상'], 200),
-    'Internet_Hour': np.random.randint(0, 8, 200),
-    'ICT_Skilled': np.random.choice([0, 1], 200, p=[0.4, 0.6])
-})
+numeric_df = df[['연도', '값']].copy()
+numeric_df['성별'] = df['Gender']
+numeric_df['기술'] = df['Skill_KR']
 
-gender_map = {'남성': 0, '여성': 1}
-edu_map = {'중졸 이하': 0, '고졸': 1, '대졸 이상': 2}
+# Label Encoding
+numeric_df['성별코드'] = numeric_df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
+numeric_df['기술코드'] = numeric_df['기술'].astype('category').cat.codes
 
-sample_data['Gender_num'] = sample_data['Gender'].map(gender_map)
-sample_data['Edu_num'] = sample_data['Edu_Level'].map(edu_map)
+X = numeric_df[['연도', '성별코드', '기술코드']]
+y = numeric_df['값'] > numeric_df['값'].mean()  # 평균 초과 여부
 
-X = sample_data[['Age', 'Gender_num', 'Edu_num', 'Internet_Hour']]
-y = sample_data['ICT_Skilled']
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
 model = GaussianNB()
 model.fit(X_train, y_train)
+y_pred = model.predict(X_test)
+
+st.text(clean_unicode("📌 분류 보고서"))
+st.text(clean_unicode(classification_report(y_test, y_pred)))
 
 # ----------------------
-# 4. 사용자 입력 - 예측
+# 4. 큐 & 스택 시뮬레이션
 # ----------------------
+st.subheader(clean_unicode("자료구조 시뮬레이션: 큐와 스택"))
 
-st.header("ICT 역량 보유 예측 (나이브 베이즈)")
-age = st.slider("나이", 10, 70, 25)
-gender = st.radio("성별", ['남성', '여성'])
-edu = st.selectbox("교육 수준", ['중졸 이하', '고졸', '대졸 이상'])
-hour = st.slider("하루 인터넷 이용 시간", 0, 10, 2)
+tab1, tab2 = st.tabs(["📥 큐 (Queue)", "📦 스택 (Stack)"])
 
-input_df = pd.DataFrame([[age, gender_map[gender], edu_map[edu], hour]], columns=X.columns)
-prediction = model.predict(input_df)[0]
-result_text = "ICT 역량 보유로 예측됩니다." if prediction else "ICT 역량 미보유로 예측됩니다."
-st.subheader(result_text)
+with tab1:
+    queue = deque()
+    q_input = st.text_input("큐에 추가할 항목 입력")
+    if st.button("큐에 추가"):
+        queue.append(q_input)
+    if st.button("큐에서 제거"):
+        if queue:
+            queue.popleft()
+    st.write("현재 큐 상태:", list(queue))
 
-# ----------------------
-# 5. 자료구조 시뮬레이션 (큐 / 스택)
-# ----------------------
-
-st.header("자료구조 시뮬레이션")
-
-st.subheader("큐 구조 (대기열 시뮬레이션)")
-queue = deque(["사용자1", "사용자2", "사용자3"])
-if st.button("대기열에서 다음 사용자 꺼내기 (popleft)"):
-    if queue:
-        st.success(f"처리 중: {queue.popleft()}")
-    else:
-        st.warning("큐가 비어 있습니다.")
-
-st.subheader("스택 구조 (후입선출 시뮬레이션)")
-stack = []
-if st.button("결과 스택에 저장"):
-    stack.append(result_text)
-    st.info(f"스택 크기: {len(stack)}")
-
-if st.button("최근 결과 보기 (pop)"):
-    if stack:
-        st.success(stack.pop())
-    else:
-        st.warning("스택이 비어 있습니다.")
+with tab2:
+    stack = []
+    s_input = st.text_input("스택에 추가할 항목 입력")
+    if st.button("스택에 추가"):
+        stack.append(s_input)
+    if st.button("스택에서 제거"):
+        if stack:
+            stack.pop()
+    st.write("현재 스택 상태:", stack)
 
 # ----------------------
-# 6. 정렬 알고리즘 시각화
+# 5. 간단한 정렬 알고리즘 시각화
 # ----------------------
+st.subheader(clean_unicode("정렬 알고리즘 시각화"))
 
-st.header("지역별 ICT 기술 보유율 정렬 예시")
-region_data = pd.DataFrame({
-    'Region': [f"지역{i}" for i in range(1, 11)],
-    'ICT_Rate': np.random.uniform(40, 90, 10).round(2)
-})
+sort_data = st.text_input("정렬할 숫자 입력 (쉼표로 구분)", value="5,2,9,1,7")
 
-sort_algo = st.selectbox("정렬 알고리즘 선택", ['선택 정렬', '버블 정렬'])
+if st.button("정렬 시작"):
+    try:
+        nums = [int(x) for x in sort_data.split(',')]
+        st.write("원본 배열:", nums)
 
-if sort_algo == '선택 정렬':
-    sorted_data = region_data.copy()
-    for i in range(len(sorted_data)):
-        min_idx = i
-        for j in range(i+1, len(sorted_data)):
-            if sorted_data.loc[j, 'ICT_Rate'] < sorted_data.loc[min_idx, 'ICT_Rate']:
-                min_idx = j
-        sorted_data.iloc[i], sorted_data.iloc[min_idx] = sorted_data.iloc[min_idx], sorted_data.iloc[i]
-elif sort_algo == '버블 정렬':
-    sorted_data = region_data.copy()
-    for i in range(len(sorted_data)):
-        for j in range(0, len(sorted_data) - i - 1):
-            if sorted_data.loc[j, 'ICT_Rate'] > sorted_data.loc[j+1, 'ICT_Rate']:
-                sorted_data.iloc[j], sorted_data.iloc[j+1] = sorted_data.iloc[j+1], sorted_data.iloc[j]
+        # 버블 정렬 구현
+        for i in range(len(nums)):
+            for j in range(len(nums) - i - 1):
+                if nums[j] > nums[j+1]:
+                    nums[j], nums[j+1] = nums[j+1], nums[j]
+        st.write("정렬된 배열:", nums)
 
-st.dataframe(sorted_data)
-st.bar_chart(sorted_data.set_index('Region'))
+        # 시각화
+        fig2, ax2 = plt.subplots()
+        ax2.bar(range(len(nums)), nums)
+        ax2.set_title("정렬 결과 시각화")
+        st.pyplot(fig2)
+    except:
+        st.warning("숫자를 올바르게 입력해주세요!")
