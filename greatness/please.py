@@ -20,7 +20,8 @@ st.set_page_config(page_title="ICT 역량 분류 및 격차 분석", layout="wid
 
 @st.cache_data
 def load_data():
-    file_path = os.path.join("data", "4-4-1.csv")
+    file_path = os.path.join(os.path.dirname(__file__), "data", "4-4-1.csv")
+    st.write("📂 데이터 경로 확인:", os.path.abspath(file_path))
     df = pd.read_csv(file_path, encoding="utf-8")
     df.rename(columns={'기술유형': 'Skill_Type', '성별': 'Gender'}, inplace=True)
 
@@ -38,6 +39,9 @@ def load_data():
     df['Skill_KR'] = df['Skill_Type'].map(skill_map)
     df['Gender'] = df['Gender'].fillna('전체')
     return df
+
+# 이하 동일...
+
 
 df = load_data()
 
