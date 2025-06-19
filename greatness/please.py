@@ -97,7 +97,7 @@ hour = st.slider("하루 인터넷 이용 시간", 0, 10, 2)
 
 input_df = pd.DataFrame([[age, gender_map[gender], edu_map[edu], hour]], columns=X.columns)
 prediction = model.predict(input_df)[0]
-result_text = "✅ ICT 역량 보유로 예측됩니다." if prediction else "❌ ICT 역량 미보유로 예측됩니다."
+result_text = "ICT 역량 보유로 예측됩니다." if prediction else " ICT 역량 미보유로 예측됩니다."
 st.subheader(result_text)
 
 # ----------------------
