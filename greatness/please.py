@@ -9,25 +9,23 @@ from collections import deque
 import numpy as np
 import os
 
-# 한글 폰트 설정
 plt.rcParams['font.family'] = 'Malgun Gothic'
 
-# 유니코드 오류 방지용 텍스트 정리 함수
 def clean_unicode(text):
-    return ''.join(c for c in str(text) if c.isprintable())
+    return ''.join(c for c in str(text) if c.isprintable() and ord(c) < 55296 or ord(c) > 57343)
 
 st.set_page_config(page_title=clean_unicode("ICT 역량 분류 및 격차 분석"), layout="wide")
 
-# ----------------------
-# 1. 데이터 불러오기 및 전처리
-# ----------------------
 @st.cache_data
 def load_data():
     base_dir = os.getcwd()
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    st.write(clean_unicode("📂 데이터 경로 확인:"), file_path)
+    st.write("데이터 경로 확인:", file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
-
+    df.rename(columns={
+        '기술유형': 'Skill_Type',
+        '성별': 'Gender'
+    }, inplace=True)
     skill_map = {
         'ARSP': '문서 편집',
         'EMAIL': '이메일 사용',
@@ -39,38 +37,34 @@ def load_data():
         'BANK': '온라인 뱅킹',
         'USEC': '보안 설정'
     }
-    df['Skill_KR'] = df['기술유형'].map(skill_map)
-    df['성별'] = df['성별'].fillna('전체')
+    df['Skill_KR'] = df['Skill_Type'].map(skill_map)
+    df['Gender'] = df['Gender'].fillna('전체')
     return df
 
 df = load_data()
 
-# ----------------------
-# 2. 시각화
-# ----------------------
+st.title(clean_unicode("ICT 역량 분류 및 격차 분석"))
 st.header(clean_unicode("기술 유형별 ICT 활용 격차"))
 
 selected_skill = st.selectbox("기술을 선택하세요", df['Skill_KR'].dropna().unique())
 filtered = df[df['Skill_KR'] == selected_skill]
+filtered = filtered.dropna(subset=['Year', 'Value', 'Gender'])
 
 if filtered.empty:
     st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
 else:
     try:
         fig, ax = plt.subplots(figsize=(10, 6))
-        sns.barplot(data=filtered, x='Year', y='Value', hue='성별', ax=ax)
+        sns.barplot(data=filtered, x='Year', y='Value', hue='Gender', ax=ax)
         ax.set_title(clean_unicode(f"{selected_skill} 기술 활용도 (성별 비교)"))
         st.pyplot(fig)
     except ValueError as e:
         st.error(f"시각화 중 오류 발생: {e}")
 
-# ----------------------
-# 3. 나이브 베이즈 분류기 적용
-# ----------------------
 st.subheader(clean_unicode("나이브 베이즈 분류기를 활용한 예측"))
 
 numeric_df = df[['Year', 'Value']].copy()
-numeric_df['성별'] = df['성별']
+numeric_df['성별'] = df['Gender']
 numeric_df['기술'] = df['Skill_KR']
 
 numeric_df['성별코드'] = numeric_df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
@@ -88,9 +82,6 @@ y_pred = model.predict(X_test)
 st.text(clean_unicode("📌 분류 보고서"))
 st.text(clean_unicode(classification_report(y_test, y_pred)))
 
-# ----------------------
-# 4. 큐 & 스택 시뮬레이션
-# ----------------------
 st.subheader(clean_unicode("자료구조 시뮬레이션: 큐와 스택"))
 
 tab1, tab2 = st.tabs(["📥 큐 (Queue)", "📦 스택 (Stack)"])
@@ -115,9 +106,6 @@ with tab2:
             stack.pop()
     st.write("현재 스택 상태:", stack)
 
-# ----------------------
-# 5. 정렬 알고리즘 시각화
-# ----------------------
 st.subheader(clean_unicode("정렬 알고리즘 시각화"))
 
 sort_data = st.text_input("정렬할 숫자 입력 (쉼표로 구분)", value="5,2,9,1,7")
