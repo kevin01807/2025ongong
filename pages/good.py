@@ -57,28 +57,31 @@ else:
     st.error("데이터셋에 필요한 컬럼이 없습니다.")
 
 # 3. 나이브 베이즈 분류기
-# ----------------------
-st.subheader("나이브 베이즈 분류기를 활용한 예측")
+st.header("ICT 기술 활용도 예측 (나이브 베이즈)")
 try:
-    numeric_df = df[['Year', 'Value']].copy()
-    numeric_df['Gender'] = df['Gender']
-    numeric_df['Skill'] = df['Skill_KR']
+    features = df[["Year", "기술유형", "성별"]]
+    target = df["Value"]
 
-    numeric_df['Gender_Code'] = numeric_df['Gender'].map({'남자': 0, '여자': 1, '전체': 2})
-    numeric_df['Skill_Code'] = numeric_df['Skill'].astype('category').cat.codes
-    numeric_df.dropna(inplace=True)
+    # 인코딩
+    le1 = LabelEncoder()
+    le2 = LabelEncoder()
+    features["기술유형"] = le1.fit_transform(features["기술유형"])
+    features["성별"] = le2.fit_transform(features["성별"])
 
-    X = numeric_df[['Year', 'Gender_Code', 'Skill_Code']]
-    y = numeric_df['Value'] > numeric_df['Value'].mean()
+    # 결측치 처리
+    imputer = SimpleImputer(strategy="mean")
+    X = imputer.fit_transform(features)
+    y = target
 
-    if len(X) > 0:
-        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
+
+    if X_train.shape[0] == 0:
+        st.warning("학습에 사용할 데이터가 부족합니다. 필터 조건을 확인하세요.")
+    else:
         model = GaussianNB()
         model.fit(X_train, y_train)
-        y_pred = model.predict(X_test)
-        st.text(classification_report(y_test, y_pred))
-    else:
-        st.warning("데이터가 부족합니다. 다른 기술을 선택해보세요.")
+        score = model.score(X_test, y_test)
+        st.success(f"모델 정확도: {score:.2f}")
 except Exception as e:
     st.error(f"나이브 베이즈 실행 중 오류 발생: {e}")
 # -------------------
