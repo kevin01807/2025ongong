@@ -8,3 +8,4 @@ networkx
 matplotlib
 statsmodels
 numpy
+seaborn
