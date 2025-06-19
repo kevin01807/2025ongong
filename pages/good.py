@@ -56,8 +56,9 @@ if '기술유형' in df.columns and '성별' in df.columns and 'Year' in df.colu
 else:
     st.error("데이터셋에 필요한 컬럼이 없습니다.")
 
-# 3. 나이브 베이즈 분류기
+# ---------- 2. 나이브 베이즈 분류 ----------
 st.header("ICT 기술 활용도 예측 (나이브 베이즈)")
+
 try:
     features = df[["Year", "기술유형", "성별"]]
     target = df["Value"]
@@ -73,10 +74,10 @@ try:
     X = imputer.fit_transform(features)
     y = target
 
+    # 분류기 학습
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.25)
-
     if X_train.shape[0] == 0:
-        st.warning("학습에 사용할 데이터가 부족합니다. 필터 조건을 확인하세요.")
+        st.warning("학습에 사용할 데이터가 부족합니다. 데이터를 확인하세요.")
     else:
         model = GaussianNB()
         model.fit(X_train, y_train)
@@ -84,6 +85,7 @@ try:
         st.success(f"모델 정확도: {score:.2f}")
 except Exception as e:
     st.error(f"나이브 베이즈 실행 중 오류 발생: {e}")
+
 # -------------------
 # 3. 큐/스택 시뮬레이션
 # -------------------
