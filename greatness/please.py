@@ -22,7 +22,7 @@ st.set_page_config(page_title="ICT 역량 분류 및 격차 분석", layout="wid
 def load_data():
     base_dir = os.getcwd()
     file_path = os.path.join(base_dir, "data", "4-4-1.csv")
-    st.write("데이터 경로 확인:", file_path)
+    st.text("데이터 경로 확인: " + file_path)
     df = pd.read_csv(file_path, encoding="utf-8")
     df.rename(columns={'기술유형': 'Skill_Type', '성별': 'Gender'}, inplace=True)
 
@@ -97,7 +97,7 @@ hour = st.slider("하루 인터넷 이용 시간", 0, 10, 2)
 
 input_df = pd.DataFrame([[age, gender_map[gender], edu_map[edu], hour]], columns=X.columns)
 prediction = model.predict(input_df)[0]
-result_text = "ICT 역량 보유로 예측됩니다." if prediction else " ICT 역량 미보유로 예측됩니다."
+result_text = "ICT 역량 보유로 예측됩니다." if prediction else "ICT 역량 미보유로 예측됩니다."
 st.subheader(result_text)
 
 # ----------------------
