@@ -59,17 +59,27 @@ else:
 # ----------------------
 # 3. 나이브 베이즈 분류기 적용
 # ----------------------
-st.subheader(clean_unicode("나이브 베이즈 분류기를 활용한 예측"))
+st.subheader("나이브 베이즈 분류기를 활용한 예측")
 
-if {'Year', '성별', '기술유형', 'Value'}.issubset(df.columns):
-    df['성별코드'] = df['성별'].map({'남자': 0, '여자': 1, '전체': 2})
-    df['기술코드'] = df['기술유형'].astype('category').cat.codes
+numeric_df = df[['Year', 'Value']].copy()
+numeric_df['Gender'] = df['성별']
+numeric_df['Skill'] = df['기술유형']
 
-    numeric_df = df[['Year', '성별코드', '기술코드', 'Value']].dropna()
+# Label Encoding
+numeric_df['Gender_Code'] = numeric_df['Gender'].map({'남자': 0, '여자': 1, '전체': 2})
+numeric_df['Skill_Code'] = numeric_df['Skill'].astype('category').cat.codes
 
-    X = numeric_df[['Year', '성별코드', '기술코드']]
-    y = numeric_df['Value'] > numeric_df['Value'].mean()
+# NaN 제거
+numeric_df = numeric_df.dropna(subset=['Year', 'Value', 'Gender_Code', 'Skill_Code'])
 
+# 특성과 라벨 설정
+X = numeric_df[['Year', 'Gender_Code', 'Skill_Code']]
+y = numeric_df['Value'] > numeric_df['Value'].mean()
+
+# 데이터가 충분한지 확인
+if len(X) < 2:
+    st.warning("📉 학습에 사용할 데이터가 부족합니다. 필터 조건을 변경하거나 데이터를 확인해주세요.")
+else:
     X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
 
     model = GaussianNB()
@@ -78,8 +88,7 @@ if {'Year', '성별', '기술유형', 'Value'}.issubset(df.columns):
 
     st.text("📌 분류 보고서")
     st.text(classification_report(y_test, y_pred))
-else:
-    st.error("분류기 실행에 필요한 컬럼이 누락되어 있습니다.")
+
 
 # ----------------------
 # 4. 큐 & 스택 시뮬레이션
