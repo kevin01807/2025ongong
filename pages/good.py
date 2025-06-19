@@ -1,109 +1,120 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import os
-from collections import deque
-from math import log2
 import matplotlib.pyplot as plt
-import networkx as nx
-import matplotlib.font_manager as fm
+import seaborn as sns
+from sklearn.naive_bayes import GaussianNB
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
+from collections import deque
+import os
 
-# ✅ 파일 경로 설정
-base_dir = os.path.dirname(__file__)
-power_path = os.path.join(base_dir, 'power_by_region.csv')
-temp_path = os.path.join(base_dir, 'temperature_by_region.csv')
-hourly_path = os.path.join(base_dir, 'hourly_power.csv')
-sdg_path = os.path.join(base_dir, '7-1-1.csv')
+# 한글 폰트 설정
+plt.rcParams['font.family'] = 'Malgun Gothic'
 
-# ✅ 데이터 불러오기
-df_power = pd.read_csv(power_path)
-df_temp = pd.read_csv(temp_path)
-df_hourly = pd.read_csv(hourly_path)
-df_sdg = pd.read_csv(sdg_path)
+st.set_page_config(page_title="ICT 역량 분류 및 격차 분석", layout="wide")
 
-# ✅ 컬럼 정리 및 매핑
-df_temp.rename(columns={'시도명': '시도', '관측소명': '시군구'}, inplace=True)
-df_power['총사용량'] = df_power[[str(m)+'월' for m in range(1, 13)]].sum(axis=1)
+# 데이터 불러오기
+@st.cache_data
+def load_data():
+    base_dir = os.getcwd()
+    file_path = os.path.join(base_dir, "data", "4-4-1.csv")
+    st.write("📂 데이터 경로 확인:", file_path)
+    df = pd.read_csv(file_path, encoding="utf-8")
+    return df
 
-# ✅ 1. 샤논 엔트로피 계산
-def compute_entropy(group):
-    counts = group['총사용량'].value_counts(normalize=True)
-    return -np.sum([p * log2(p) for p in counts if p > 0])
+df = load_data()
 
-entropy_df = df_power.groupby(['시도', '시군구']).apply(compute_entropy).reset_index(name='Entropy')
-st.subheader("1. Shannon Entropy of Power Usage")
-st.dataframe(entropy_df)
+# -------------------------------
+# 1. 시각화
+# -------------------------------
+st.header("기술 유형별 ICT 활용 격차")
+selected_skill = st.selectbox("기술을 선택하세요", df['기술유형'].unique())
+filtered = df[df['기술유형'] == selected_skill]
 
-# ✅ 2. 기온 기반 회귀 분석
-avg_power = df_power.groupby(['시도', '시군구'])['총사용량'].mean().reset_index(name='AvgUsage')
-avg_temp = df_temp.groupby(['시도', '시군구'])['평균기온값'].mean().reset_index()
-df_merged = pd.merge(avg_power, avg_temp, on=['시도', '시군구'], how='inner')
+if filtered.empty:
+    st.warning("선택한 기술에 해당하는 데이터가 없습니다.")
+else:
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        sns.barplot(data=filtered, x='Year', y='Value', hue='성별', ax=ax)
+        ax.set_title(f"{selected_skill} 기술 활용도 (성별 비교)")
+        st.pyplot(fig)
+    except ValueError as e:
+        st.error(f"시각화 중 오류 발생: {e}")
 
-fig1 = px.scatter(df_merged, x='평균기온값', y='AvgUsage', trendline='ols',
-                  title='Regression: Temperature vs Power Usage')
-st.plotly_chart(fig1)
-
-# ✅ 3. 큐/스택 사용 예시
-st.subheader("2. Queue/Stack Simulation")
-power_stack = list(df_power['총사용량'].head(5))
-power_queue = deque(df_power['총사용량'].head(5))
-st.write("Stack (Top 5):", power_stack[::-1])
-st.write("Queue (Top 5):", list(power_queue))
-
-# ✅ 4. 버블 정렬 적용
-def bubble_sort(df):
-    data = df[['시도', '시군구', '총사용량']].copy().reset_index(drop=True)
-    n = len(data)
-    for i in range(n):
-        for j in range(0, n-i-1):
-            if data.loc[j, '총사용량'] < data.loc[j+1, '총사용량']:
-                data.loc[j], data.loc[j+1] = data.loc[j+1].copy(), data.loc[j].copy()
-    return data.head(10)
-
-sorted_df = bubble_sort(df_power)
-st.subheader("3. Top 10 Regions by Power Usage (Bubble Sort)")
-st.dataframe(sorted_df)
-
-# ✅ 5. 트리 구조 시각화
-st.subheader("4. Tree Structure of Power Distribution")
-
-tree_data = df_power[['시도', '시군구']].drop_duplicates()
-G = nx.DiGraph()
-for _, row in tree_data.iterrows():
-    G.add_edge(row['시도'], row['시군구'])
-
-fig2, ax = plt.subplots(figsize=(10, 8))
-nx.draw(G, with_labels=True, node_color='lightblue', edge_color='gray', node_size=1200, font_size=8)
-st.pyplot(fig2)
-
-# ✅ 6. SDG 7-1-1 시각화
-st.subheader("5. SDG 7.1.1 Performance by Region")
+# -------------------------------
+# 2. 나이브 베이즈 분류기
+# -------------------------------
+st.subheader("나이브 베이즈 분류기를 활용한 예측")
 
 try:
-    plt.rcParams['font.family'] = 'NanumGothic'
-except:
-    pass  # 일부 환경에서는 폰트 설치 안되어 있을 수 있음
+    df_nb = df[['Year', 'Value', '성별', '기술유형']].dropna()
+    df_nb['Gender_Code'] = df_nb['성별'].map({'남자': 0, '여자': 1, '전체': 2})
+    df_nb['Skill_Code'] = df_nb['기술유형'].astype('category').cat.codes
 
-fig3 = px.bar(df_sdg, x='지역명', y='보급률', color='보급률',
-              title='SDG 7.1.1: 보급률 by Region')
-st.plotly_chart(fig3)
+    X = df_nb[['Year', 'Gender_Code', 'Skill_Code']]
+    y = df_nb['Value'] > df_nb['Value'].mean()
 
-# ✅ 7. 변분법 기반 최적 경로(예시: 최소 거리 기반 연결)
-st.subheader("6. Variational Optimization (Distance Simulation)")
+    if len(X) < 2:
+        st.warning("📉 학습에 사용할 데이터가 부족합니다. 필터 조건을 변경하거나 데이터를 확인해주세요.")
+    else:
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+        model = GaussianNB()
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        st.text("📌 분류 보고서")
+        st.text(classification_report(y_test, y_pred))
+except Exception as e:
+    st.error(f"나이브 베이즈 실행 중 오류 발생: {e}")
 
-# 예시 좌표 데이터 추가
-sample_coords = df_power[['시도', '시군구']].drop_duplicates().reset_index(drop=True)
-sample_coords['x'] = np.random.rand(len(sample_coords)) * 100
-sample_coords['y'] = np.random.rand(len(sample_coords)) * 100
+# -------------------------------
+# 3. 큐 & 스택 시뮬레이션
+# -------------------------------
+st.subheader("자료구조 시뮬레이션: 큐와 스택")
 
-fig4, ax4 = plt.subplots(figsize=(8, 6))
-for i in range(len(sample_coords)-1):
-    x1, y1 = sample_coords.loc[i, ['x', 'y']]
-    x2, y2 = sample_coords.loc[i+1, ['x', 'y']]
-    ax4.plot([x1, x2], [y1, y2], 'k--')
-ax4.scatter(sample_coords['x'], sample_coords['y'], c='red')
-for i, row in sample_coords.iterrows():
-    ax4.text(row['x']+1, row['y'], f"{row['시도']}-{row['시군구']}", fontsize=8)
-ax4.set_title("Optimized Power Path Simulation (Variational Principle)")
-st.pyplot(fig4)
+tab1, tab2 = st.tabs(["📥 큐 (Queue) - ICT 교육 대기열", "📦 스택 (Stack) - 기술 지원 우선순위"])
+
+with tab1:
+    st.write("ICT 교육 프로그램 참여자 대기열을 시뮬레이션한 큐 구조입니다.")
+    queue = deque()
+    q_input = st.text_input("대기열에 추가할 이름")
+    if st.button("큐에 추가"):
+        queue.append(q_input)
+    if st.button("큐에서 제거"):
+        if queue:
+            queue.popleft()
+    st.write("현재 대기열 상태:", list(queue))
+
+with tab2:
+    st.write("긴급 ICT 기술 지원 요청을 스택으로 관리합니다.")
+    stack = []
+    s_input = st.text_input("긴급 요청 입력")
+    if st.button("스택에 추가"):
+        stack.append(s_input)
+    if st.button("스택에서 제거"):
+        if stack:
+            stack.pop()
+    st.write("현재 요청 스택 상태:", stack)
+
+# -------------------------------
+# 4. 정렬 알고리즘 시각화
+# -------------------------------
+st.subheader("정렬 알고리즘 시각화: ICT 역량 점수 정렬")
+
+sort_data = st.text_input("ICT 역량 점수 입력 (예: 82,95,70)", value="82,95,70")
+if st.button("정렬 시작"):
+    try:
+        nums = [int(x) for x in sort_data.split(',')]
+        st.write("원본 점수:", nums)
+        # 버블 정렬
+        for i in range(len(nums)):
+            for j in range(len(nums) - i - 1):
+                if nums[j] > nums[j + 1]:
+                    nums[j], nums[j + 1] = nums[j + 1], nums[j]
+        st.write("정렬된 점수:", nums)
+        fig2, ax2 = plt.subplots()
+        ax2.bar(range(len(nums)), nums)
+        ax2.set_title("정렬된 ICT 점수 시각화")
+        st.pyplot(fig2)
+    except:
+        st.warning("숫자를 올바르게 입력하세요. (쉼표로 구분)")
