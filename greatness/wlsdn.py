@@ -85,15 +85,10 @@ ICT 기술 활용 격차를 줄이기 위해서는, 어느 **기술 유형**이 
 또한, 이 분류기는 데이터의 누락(NaN)이나 소수의 허리에도 **단순하고 빠른 의상결정**을 할 수 있는 기반을 제공함으로써 **ICT 역량의 공정한 분배와 격차 해소**에 기여할 수 있습니다.
 """)
 
-# -------------------
-# 3. 큐/스택 시뮬레이션 + 정렬 시각화
-# -------------------
-st.subheader("📊 ICT 격차 계층 정렬 시뮬레이션 (Queue & Stack)")
-
 # 데이터 불러오기
 try:
     gap_path = os.path.join("data", "일반국민_대비_취약계층_디지털정보화종합수준_20250620115549.csv")
-    gap_df = pd.read_csv(gap_path, encoding='utf-8')
+    gap_df = pd.read_csv(gap_path, encoding='cp949')  # ← 여기 변경됨
 
     # 필요한 컬럼 필터링
     years = [str(y) for y in range(2015, 2024)]
@@ -131,6 +126,7 @@ try:
 
 except Exception as e:
     st.error(f"정렬 시각화 중 오류 발생: {e}")
+
 
 
 
