@@ -128,28 +128,4 @@ except Exception as e:
     st.error(f"정렬 시각화 중 오류 발생: {e}")
 
 
- -------------------
-# 4. 정렬 알고리즘 시각화
-# -------------------
-st.subheader("정렬 알고리즘 시각화")
-st.markdown("#### 🔢 ICT 기술 우선순위 정렬")
-
-sort_data = st.text_input("정렬할 숫자 입력 (쉼표로 구분)", value="5,2,9,1,7")
-if st.button("정렬 시작"):
-    try:
-        nums = [int(x.strip()) for x in sort_data.split(',') if x.strip().isdigit()]
-        st.write("원본 배열:", nums)
-
-        for i in range(len(nums)):
-            for j in range(len(nums) - i - 1):
-                if nums[j] > nums[j+1]:
-                    nums[j], nums[j+1] = nums[j+1], nums[j]
-
-        st.write("정렬된 배열:", nums)
-        fig, ax = plt.subplots()
-        ax.bar(range(len(nums)), nums)
-        ax.set_title("정렬 결과 시각화")
-        st.pyplot(fig)
-    except Exception as e:
-        st.warning(f"입력 오류: {e}")
 
