@@ -1,6 +1,6 @@
 # app.py
 # ──────────────────────────────────────────────────
-# 고등학생용 ‘대통령 성향 테스트’  Streamlit 웹앱
+# 고등학생용 ‘대통령 성향 테스트’ Streamlit 웹앱
 # 질문 7개 · 후보 3명(이재명, 김문수, 이준석) 매칭
 # ──────────────────────────────────────────────────
 import streamlit as st
@@ -93,13 +93,13 @@ RESULTS = {
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
     st.session_state.answers = {}
+    st.session_state.score = {}   # ← score 기본값 초기화
 
 # -----------------------------
 # 2. 헤더
 # -----------------------------
 st.title("🗳️ 대통령 성향 테스트")
 st.markdown("간단한 7가지 질문에 답하고\n**세 후보 중 누구와 가장 비슷한지** 확인해 보세요!")
-
 st.markdown("---")
 
 # -----------------------------
@@ -123,28 +123,36 @@ with st.form("quiz_form"):
 # 4. 결과 계산
 # -----------------------------
 if submitted and not st.session_state.submitted:
-    # 점수 집계
     score = {"이재명": 0, "김문수": 0, "이준석": 0}
+
     for idx, item in enumerate(QUESTIONS, start=1):
         sel_text = st.session_state.answers[f"q{idx}"]
-        # 선택지 텍스트 → 후보 매핑
         for opt_text, cand in item["opts"]:
             if sel_text == opt_text:
                 score[cand] += 1
                 break
 
-    # 최고 점수 후보
     winner = max(score, key=score.get)
+
+    # 세션 저장
     st.session_state.submitted = True
     st.session_state.winner = winner
+    st.session_state.score = score   # ← score 저장
 
 # -----------------------------
 # 5. 결과 페이지
 # -----------------------------
 if st.session_state.get("submitted"):
     result = RESULTS[st.session_state.winner]
+    score = st.session_state.score   # ← score 불러오기
+
     st.markdown("---")
     st.header(f"{result['emoji']} {result['title']}")
     st.markdown(result["desc"])
-    st.markdown(f"**선택 비율**  \n- 이재명: {score['이재명']}  \n- 김문수: {score['김문수']}  \n- 이준석: {score['이준석']}")
+    st.markdown(
+        f"**선택 비율**  \n"
+        f"- 이재명: {score['이재명']}  \n"
+        f"- 김문수: {score['김문수']}  \n"
+        f"- 이준석: {score['이준석']}"
+    )
     st.button("다시 해보기", on_click=lambda: st.experimental_rerun())
