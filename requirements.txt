@@ -10,3 +10,4 @@ statsmodels
 numpy
 seaborn
 streamlit>=1.27.0
+streamlit>=1.30
