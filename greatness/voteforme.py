@@ -1,11 +1,13 @@
 # voteforme.py
 import streamlit as st
 
+# ---- 페이지 설정 ----
 st.set_page_config(page_title="President 101", page_icon="🗳️", layout="centered")
 
-# -----------------------------
-# 질문 & 결과 데이터
-# -----------------------------
+PRIMARY = "#0b2b45"         # 짙은 네이비
+BOX_CSS = f"border: 2px solid {PRIMARY}; border-radius: 6px; padding: 22px;"
+
+# ---- 질문·선택지 데이터 ----
 QUESTIONS = [
     {
         "q": "내 방 월세 진짜 너무 비싸..\n집 문제 어떻게 해결해야 한다고 생각해?",
@@ -15,6 +17,7 @@ QUESTIONS = [
             ("청년 기숙사나 월세 지원 같은 게 현실적이지 않을까?", "이준석"),
         ],
     },
+    # 나머지 6문항은 동일 포맷으로!
     {
         "q": "의사 파업 등 의료 문제, 어찌 해결할까?",
         "opts": [
@@ -66,75 +69,71 @@ QUESTIONS = [
 ]
 
 RESULTS = {
-    "이재명": {
-        "title": "당신은 ‘이재명’과 가장 비슷해요!",
-        "desc": "- 복지 확대\n- 기본소득\n- 공공주택·평화 외교",
-        "emoji": "🌱",
-    },
-    "김문수": {
-        "title": "당신은 ‘김문수’와 가장 비슷해요!",
-        "desc": "- 자유시장·작은 정부\n- 강경 안보\n- 전통적 가치",
-        "emoji": "🛡️",
-    },
-    "이준석": {
-        "title": "당신은 ‘이준석’과 가장 비슷해요!",
-        "desc": "- 청년·기술 중심\n- 실용주의\n- 구조 개혁",
-        "emoji": "🚀",
-    },
+    "이재명": ("🌱 당신은 ‘이재명’과 가장 비슷해요!",
+               "- 복지 확대\n- 기본소득\n- 공공주택·평화 외교"),
+    "김문수": ("🛡️ 당신은 ‘김문수’와 가장 비슷해요!",
+               "- 자유시장·작은 정부\n- 강경 안보\n- 전통적 가치"),
+    "이준석": ("🚀 당신은 ‘이준석’과 가장 비슷해요!",
+               "- 청년·기술 중심\n- 실용주의\n- 구조 개혁"),
 }
 
-# -----------------------------
-# 세션 초기화
-# -----------------------------
-if "page" not in st.session_state:
-    st.session_state.page = 0
+# ---- 세션 변수 초기화 ----
+if "idx" not in st.session_state:
+    st.session_state.idx = 0
     st.session_state.score = {"이재명": 0, "김문수": 0, "이준석": 0}
-    st.session_state.finished = False
+    st.session_state.done = False
 
-# -----------------------------
-# 질문 출력 함수
-# -----------------------------
-def show_question(idx):
-    qdata = QUESTIONS[idx]
-    st.markdown("## 🗳️ President 101")
-    st.markdown("#### 당신의 대통령에게 투표하세요!\n")
-    st.markdown("---")
-    st.markdown(f"### Q{idx + 1}. {qdata['q']}")
+# ---- 상단 네이비 헤더 ----
+st.markdown(
+    f"<div style='background:{PRIMARY}; padding:16px; text-align:center;'>"
+    f"<h1 style='color:white;margin:0;'>President 101</h1>"
+    f"<p style='color:white;margin:0;'>당신의 대통령에게 투표하세요!</p></div>",
+    unsafe_allow_html=True,
+)
 
+st.markdown("<br>", unsafe_allow_html=True)
+
+# =========================================================
+# 1) 질문 페이지
+# =========================================================
+if not st.session_state.done:
+    qdata = QUESTIONS[st.session_state.idx]
+
+    # 질문 박스
+    st.markdown(
+        f"<div style='{BOX_CSS} text-align:center; white-space:pre-line;'>"
+        f"{qdata['q']}</div>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 선택지 3칸
     col1, col2, col3 = st.columns(3)
-    for i, (label, cand) in enumerate(qdata["opts"]):
-        if [col1, col2, col3][i].button(label, key=f"q{idx}_opt{i}"):
+    for col, (text, cand) in zip((col1, col2, col3), qdata["opts"]):
+        clicked = col.button(text, key=f"{st.session_state.idx}_{cand}")
+        if clicked:
             st.session_state.score[cand] += 1
-            st.session_state.page += 1
-            if st.session_state.page >= len(QUESTIONS):
-                st.session_state.finished = True
-            st.experimental_rerun()
+            st.session_state.idx += 1
+            if st.session_state.idx >= len(QUESTIONS):
+                st.session_state.done = True
+            st.rerun()
 
-# -----------------------------
-# 결과 페이지
-# -----------------------------
-def show_result():
-    score = st.session_state.score
-    winner = max(score, key=score.get)
-    result = RESULTS[winner]
+# =========================================================
+# 2) 결과 페이지
+# =========================================================
+else:
+    winner = max(st.session_state.score, key=st.session_state.score.get)
+    title, desc = RESULTS[winner]
 
-    st.markdown("## 🎉 테스트 결과")
-    st.markdown(f"### {result['emoji']} {result['title']}")
-    st.markdown(result["desc"])
     st.markdown("---")
+    st.markdown(f"<h2 style='color:{PRIMARY};'>{title}</h2>", unsafe_allow_html=True)
+    st.markdown(f"<div style='{BOX_CSS} white-space:pre-line;'>{desc}</div>", unsafe_allow_html=True)
+
     st.markdown("#### 🧮 선택 비율")
-    for cand, s in score.items():
-        st.markdown(f"- {cand}: {s}")
+    for k, v in st.session_state.score.items():
+        st.markdown(f"- {k}: {v}")
 
     if st.button("🔄 다시 하기"):
-        for key in list(st.session_state.keys()):
-            del st.session_state[key]
-        st.experimental_rerun()
-
-# -----------------------------
-# 실행
-# -----------------------------
-if not st.session_state.finished:
-    show_question(st.session_state.page)
-else:
-    show_result()
+        for k in list(st.session_state.keys()):
+            del st.session_state[k]
+        st.rerun()
