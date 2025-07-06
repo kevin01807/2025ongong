@@ -1,8 +1,5 @@
 # app.py
-# ──────────────────────────────────────────────────
 # 고등학생용 ‘대통령 성향 테스트’ Streamlit 웹앱
-# 질문 7개 · 후보 3명(이재명, 김문수, 이준석) 매칭
-# ──────────────────────────────────────────────────
 import streamlit as st
 
 st.set_page_config(page_title="대통령 성향 테스트", page_icon="🗳️", layout="centered")
@@ -93,7 +90,7 @@ RESULTS = {
 if "submitted" not in st.session_state:
     st.session_state.submitted = False
     st.session_state.answers = {}
-    st.session_state.score = {}   # ← score 기본값 초기화
+    st.session_state.score = {}
 
 # -----------------------------
 # 2. 헤더
@@ -134,17 +131,16 @@ if submitted and not st.session_state.submitted:
 
     winner = max(score, key=score.get)
 
-    # 세션 저장
     st.session_state.submitted = True
     st.session_state.winner = winner
-    st.session_state.score = score   # ← score 저장
+    st.session_state.score = score
 
 # -----------------------------
 # 5. 결과 페이지
 # -----------------------------
 if st.session_state.get("submitted"):
     result = RESULTS[st.session_state.winner]
-    score = st.session_state.score   # ← score 불러오기
+    score = st.session_state.score
 
     st.markdown("---")
     st.header(f"{result['emoji']} {result['title']}")
@@ -155,4 +151,4 @@ if st.session_state.get("submitted"):
         f"- 김문수: {score['김문수']}  \n"
         f"- 이준석: {score['이준석']}"
     )
-    st.button("다시 해보기", on_click=lambda: st.experimental_rerun())
+    st.button("다시 해보기", on_click=lambda: st.rerun())
